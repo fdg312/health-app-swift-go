@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+  title: Health Hub API
+  version: 0.1.0
+  description: |
+    MVP API для приложения "Центр здоровья".
+
+    **Статус**: Начальная версия (setup). Большинство эндпоинтов — placeholders.
+
+servers:
+  - url: http://localhost:8080
+    description: Локальная разработка
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      description: Проверка состояния сервера
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Сервер работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required:
+                  - status
+
+  # === PLACEHOLDERS (не реализованы) ===
+
+  /v1/profiles:
+    get:
+      summary: Get user profile
+      description: '[PLACEHOLDER] Получение профиля пользователя'
+      operationId: getProfile
+      responses:
+        '200':
+          description: Профиль пользователя
+    post:
+      summary: Create profile
+      description: '[PLACEHOLDER] Создание профиля'
+      operationId: createProfile
+      responses:
+        '201':
+          description: Профиль создан
+
+  /v1/profiles/{profileId}:
+    parameters:
+      - name: profileId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get specific profile
+      description: '[PLACEHOLDER] Получение конкретного профиля'
+      operationId: getProfileById
+      responses:
+        '200':
+          description: Профиль найден
+    patch:
+      summary: Update profile
+      description: '[PLACEHOLDER] Обновление профиля'
+      operationId: updateProfile
+      responses:
+        '200':
+          description: Профиль обновлён
+
+  /v1/sync/batch:
+    post:
+      summary: Batch sync HealthKit data
+      description: '[PLACEHOLDER] Массовая синхронизация данных HealthKit (по часам)'
+      operationId: batchSync
+      responses:
+        '200':
+          description: Данные синхронизированы
+
+  /v1/feed:
+    get:
+      summary: Get activity feed
+      description: '[PLACEHOLDER] Лента активности пользователя'
+      operationId: getFeed
+      responses:
+        '200':
+          description: Лента активности
+
+  /v1/metrics/daily:
+    get:
+      summary: Get daily metrics
+      description: '[PLACEHOLDER] Дневные агрегированные метрики'
+      operationId: getDailyMetrics
+      responses:
+        '200':
+          description: Дневные метрики
+
+  /v1/metrics/hourly:
+    get:
+      summary: Get hourly metrics
+      description: '[PLACEHOLDER] Часовые метрики (не минутные)'
+      operationId: getHourlyMetrics
+      responses:
+        '200':
+          description: Часовые метрики
+
+  /v1/checkins:
+    get:
+      summary: Get check-ins
+      description: '[PLACEHOLDER] Список ручных чекинов'
+      operationId: getCheckins
+      responses:
+        '200':
+          description: Чекины
+    post:
+      summary: Create check-in
+      description: '[PLACEHOLDER] Создание чекина'
+      operationId: createCheckin
+      responses:
+        '201':
+          description: Чекин создан
+
+  /v1/chat/messages:
+    get:
+      summary: Get chat history
+      description: '[PLACEHOLDER] История чата с AI'
+      operationId: getChatMessages
+      responses:
+        '200':
+          description: История чата
+    post:
+      summary: Send message
+      description: '[PLACEHOLDER] Отправка сообщения AI'
+      operationId: sendChatMessage
+      responses:
+        '200':
+          description: Ответ от AI
+
+  /v1/ai/proposals:
+    get:
+      summary: Get AI proposals
+      description: '[PLACEHOLDER] Предложения от AI по улучшению здоровья'
+      operationId: getAIProposals
+      responses:
+        '200':
+          description: Список предложений
+
+components:
+  schemas:
+    # Схемы будут добавлены по мере реализации эндпоинтов
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+  securitySchemes:
+    # Будущая аутентификация (SIWA + JWT)
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+# Аутентификация пока не применяется
+# security:
+#   - bearerAuth: []
