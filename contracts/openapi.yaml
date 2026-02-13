@@ -1,15 +1,31 @@
 openapi: 3.1.0
 info:
   title: Health Hub API
-  version: 0.1.0
+  version: 0.20.0
   description: |
-    MVP API для приложения "Центр здоровья".
+    API для приложения "Центр здоровья".
+    Canonical file — все эндпоинты описаны здесь.
 
-    **Статус**: Начальная версия (setup). Большинство эндпоинтов — placeholders.
+    v0.20.0: Added Food Preferences API (GET/POST/DELETE /v1/food/prefs) and Meal Plans API (GET/PUT/DELETE /v1/meal/plan, GET /v1/meal/today). Extended FeedDayResponse with meal_today, meal_plan_title, food_prefs_count.
+    v0.19.0: Added Nutrition Targets API endpoints GET/PUT /v1/nutrition/targets and extended FeedDayResponse with nutrition_targets and nutrition_progress.
+    v0.18.0: Added Workout Plans API endpoints and nutrition_plan proposal support.
+    v0.17.0: Added supplement schedules API and vitamins_schedule proposal apply flow.
+    v0.16.0: Added AI proposal management endpoints GET /v1/ai/proposals, POST /v1/ai/proposals/{id}/apply, POST /v1/ai/proposals/{id}/reject.
+    v0.15.0: Added Chat MVP endpoint GET/POST /v1/chat/messages with assistant proposals.
+    v0.14.0: Added user settings endpoints GET/PUT /v1/settings and notifications settings persistence.
+    v0.13.0: Added Email OTP auth endpoints POST /v1/auth/email/request and POST /v1/auth/email/verify.
+    v0.12.0: Added POST /v1/auth/siwa with Apple identity token verification via JWKS.
+    v0.11.0: Added POST /v1/auth/dev for local dev JWT issuance.
+    v0.10.0: Added Sign in with Apple (SIWA) + JWT authentication, Intakes (Water & Supplements) API.
+    v0.9.0: Added Inbox/Notifications API for server-side notifications.
+    v0.8.0: Added sleep analysis, workouts, nutrition, activity details, wrist temperature sync.
 
 servers:
   - url: http://localhost:8080
     description: Локальная разработка
+
+security:
+  - BearerAuth: []
 
 paths:
   /healthz:
@@ -17,8 +33,9 @@ paths:
       summary: Health check
       description: Проверка состояния сервера
       operationId: healthCheck
+      security: []
       responses:
-        '200':
+        "200":
           description: Сервер работает
           content:
             application/json:
@@ -31,143 +48,3750 @@ paths:
                 required:
                   - status
 
-  # === PLACEHOLDERS (не реализованы) ===
+  # === Auth API ===
+
+  /v1/auth/dev:
+    post:
+      summary: Dev login (local)
+      description: |
+        Локальный вход для разработки. Возвращает Bearer JWT (HS256) с `sub=dev-user`.
+        Эндпоинт доступен всегда, независимо от AUTH_MODE.
+      operationId: signInDev
+      security: []
+      responses:
+        "200":
+          description: Успешная выдача dev токена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevAuthResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/auth/siwa:
+    post:
+      summary: Sign in with Apple
+      description: Авторизация через Apple Sign-In (SIWA). Верификация identity token и выдача JWT access token.
+      operationId: signInSIWA
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SIWAAuthRequest"
+      responses:
+        "200":
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SIWAAuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неверный или истёкший Apple token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Ошибка загрузки JWKS или внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/email/request:
+    post:
+      summary: Request OTP code by email
+      description: Отправляет одноразовый 6-значный код на email (или логирует в local режиме).
+      operationId: requestEmailOTP
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailOTPRequest"
+      responses:
+        "200":
+          description: Код отправлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailOTPRequestResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: Email auth disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Ограничение на частоту отправки OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/auth/email/verify:
+    post:
+      summary: Verify OTP code and issue access token
+      description: Проверяет OTP код и возвращает JWT access token.
+      operationId: verifyEmailOTP
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailOTPVerifyRequest"
+      responses:
+        "200":
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailOTPVerifyResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неверный / истёкший OTP или превышено число попыток
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email auth disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/settings:
+    get:
+      summary: Get user settings
+      description: Возвращает текущие настройки пользователя. Если запись не создана, возвращаются env defaults и is_default=true.
+      operationId: getSettings
+      responses:
+        "200":
+          description: Настройки пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      summary: Update user settings
+      description: Создаёт или обновляет персональные настройки пользователя.
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsDTO"
+      responses:
+        "200":
+          description: Сохранённые настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # === Profiles API ===
 
   /v1/profiles:
     get:
-      summary: Get user profile
-      description: '[PLACEHOLDER] Получение профиля пользователя'
-      operationId: getProfile
+      summary: List all profiles
+      description: Получение списка всех профилей (owner + guests)
+      operationId: listProfiles
       responses:
-        '200':
-          description: Профиль пользователя
+        "200":
+          description: Список профилей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfilesResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
     post:
-      summary: Create profile
-      description: '[PLACEHOLDER] Создание профиля'
+      summary: Create guest profile
+      description: Создание нового guest профиля (только type=guest разрешён)
       operationId: createProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileRequest"
       responses:
-        '201':
+        "201":
           description: Профиль создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/profiles/{profileId}:
     parameters:
       - name: profileId
         in: path
         required: true
+        description: UUID профиля
         schema:
           type: string
-    get:
-      summary: Get specific profile
-      description: '[PLACEHOLDER] Получение конкретного профиля'
-      operationId: getProfileById
-      responses:
-        '200':
-          description: Профиль найден
+          format: uuid
+
     patch:
-      summary: Update profile
-      description: '[PLACEHOLDER] Обновление профиля'
+      summary: Update profile name
+      description: Обновление имени профиля
       operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
       responses:
-        '200':
+        "200":
           description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      summary: Delete profile
+      description: |
+        Удаление профиля. Только guest профили могут быть удалены.
+        Попытка удалить owner возвращает 409 Conflict.
+      operationId: deleteProfile
+      responses:
+        "204":
+          description: Профиль удалён
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Нельзя удалить owner профиль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Metrics API ===
 
   /v1/sync/batch:
     post:
-      summary: Batch sync HealthKit data
-      description: '[PLACEHOLDER] Массовая синхронизация данных HealthKit (по часам)'
+      summary: Batch sync health data
+      description: Массовая синхронизация агрегированных данных здоровья
       operationId: batchSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncBatchRequest"
       responses:
-        '200':
-          description: Данные синхронизированы
-
-  /v1/feed:
-    get:
-      summary: Get activity feed
-      description: '[PLACEHOLDER] Лента активности пользователя'
-      operationId: getFeed
-      responses:
-        '200':
-          description: Лента активности
+        "200":
+          description: Данные успешно синхронизированы
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncBatchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /v1/metrics/daily:
     get:
       summary: Get daily metrics
-      description: '[PLACEHOLDER] Дневные агрегированные метрики'
+      description: Получение дневных агрегированных метрик за период
       operationId: getDailyMetrics
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Начальная дата (YYYY-MM-DD)
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Конечная дата (YYYY-MM-DD)
       responses:
-        '200':
+        "200":
           description: Дневные метрики
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyMetricsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /v1/metrics/hourly:
     get:
       summary: Get hourly metrics
-      description: '[PLACEHOLDER] Часовые метрики (не минутные)'
+      description: Получение часовых метрик за день (steps или hr)
       operationId: getHourlyMetrics
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Дата (YYYY-MM-DD)
+        - name: metric
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [steps, hr]
+          description: Тип метрики (steps или hr)
       responses:
-        '200':
+        "200":
           description: Часовые метрики
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HourlyMetricsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # === Checkins API ===
 
   /v1/checkins:
     get:
-      summary: Get check-ins
-      description: '[PLACEHOLDER] Список ручных чекинов'
-      operationId: getCheckins
+      summary: List check-ins
+      description: Получение списка чекинов за период
+      operationId: listCheckins
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-01"
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-28"
       responses:
-        '200':
-          description: Чекины
+        "200":
+          description: Список чекинов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckinsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
     post:
-      summary: Create check-in
-      description: '[PLACEHOLDER] Создание чекина'
-      operationId: createCheckin
+      summary: Create or update check-in
+      description: |
+        Создание или обновление чекина (UPSERT по profile_id, date, type).
+        Если чекин с такой комбинацией уже существует — обновляется.
+      operationId: upsertCheckin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertCheckinRequest"
       responses:
-        '201':
-          description: Чекин создан
+        "200":
+          description: Чекин создан или обновлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkin"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/checkins/{id}:
+    delete:
+      summary: Delete check-in
+      description: Удаление чекина по ID
+      operationId: deleteCheckin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Чекин удален
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Feed API ===
+
+  /v1/feed/day:
+    get:
+      summary: Get day summary
+      description: |
+        Получение сводки дня: объединяет daily metrics и checkins за конкретную дату.
+        Возвращает 200 даже если данных нет — в этом случае missing_fields содержит список отсутствующих данных.
+      operationId: getFeedDay
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-12"
+      responses:
+        "200":
+          description: Сводка дня
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedDayResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Reports API ===
+
+  /v1/reports:
+    post:
+      summary: Create report
+      description: |
+        Генерация отчёта в формате PDF или CSV за указанный период.
+        PDF содержит сводку метрик и чекинов на русском языке.
+        CSV содержит дневные данные с англоязычными заголовками колонок.
+        Максимальный период — 90 дней.
+      operationId: createReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportRequest"
+      responses:
+        "201":
+          description: Отчёт создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportDTO"
+        "400":
+          description: |
+            Невалидные данные. Коды ошибок:
+            - `invalid_format` — формат не pdf/csv
+            - `invalid_date` — неверный формат даты
+            - `invalid_range` — from > to
+            - `range_too_large` — период превышает максимум (90 дней)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      summary: List reports
+      description: Получение списка отчётов для профиля с пагинацией
+      operationId: listReports
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Максимальное количество записей
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Смещение для пагинации
+      responses:
+        "200":
+          description: Список отчётов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/reports/{id}/download:
+    get:
+      summary: Download report
+      description: |
+        Скачивание отчёта. В local mode — возвращает файл напрямую.
+        В S3 mode — возвращает 302 redirect на presigned URL.
+      operationId: downloadReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Файл отчёта (local mode)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "302":
+          description: Redirect на presigned URL (S3 mode)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/reports/{id}:
+    delete:
+      summary: Delete report
+      description: Удаление отчёта и связанных данных (S3 объекта при наличии)
+      operationId: deleteReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Отчёт удалён
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Sources API ===
+
+  /v1/sources:
+    post:
+      summary: Create source (link/note)
+      description: Создание link или note source
+      operationId: createSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSourceRequest"
+      responses:
+        "201":
+          description: Source создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      summary: List sources
+      description: Получение списка sources для профиля с опциональной фильтрацией
+      operationId: listSources
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: checkin_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourcesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/sources/image:
+    post:
+      summary: Upload image source
+      description: |
+        Загрузка изображения как source.
+        Максимальный размер файла: UPLOAD_MAX_MB (default: 10 MB).
+        Максимум источников на checkin: SOURCES_MAX_PER_CHECKIN (default: 4).
+      operationId: uploadImageSource
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                profile_id:
+                  type: string
+                  format: uuid
+                checkin_id:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+              required:
+                - profile_id
+                - file
+      responses:
+        "201":
+          description: Image source создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDTO"
+        "400":
+          description: |
+            Невалидные данные. Коды ошибок:
+            - `file_too_large` — файл превышает максимум
+            - `unsupported_mime` — неподдерживаемый MIME тип
+            - `max_sources_exceeded` — превышен лимит источников для checkin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/sources/{id}/download:
+    get:
+      summary: Download image
+      description: Скачивание изображения (только для kind=image)
+      operationId: downloadImage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Файл изображения
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/sources/{id}:
+    delete:
+      summary: Delete source
+      description: Удаление source и связанных данных (S3 объекта при наличии)
+      operationId: deleteSource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Source удалён
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Inbox/Notifications API ===
+
+  /v1/inbox:
+    get:
+      summary: List notifications
+      description: Получение списка уведомлений для профиля
+      operationId: listNotifications
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: only_unread
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/inbox/unread-count:
+    get:
+      summary: Get unread count
+      description: Получение количества непрочитанных уведомлений
+      operationId: getUnreadCount
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Количество непрочитанных
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/inbox/mark-read:
+    post:
+      summary: Mark notifications as read
+      description: Отметить указанные уведомления как прочитанные
+      operationId: markNotificationsRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkReadRequest"
+      responses:
+        "200":
+          description: Уведомления отмечены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkReadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/inbox/mark-all-read:
+    post:
+      summary: Mark all notifications as read
+      description: Отметить все уведомления профиля как прочитанные
+      operationId: markAllNotificationsRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkAllReadRequest"
+      responses:
+        "200":
+          description: Все уведомления отмечены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkAllReadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/inbox/generate:
+    post:
+      summary: Generate notifications
+      description: Генерация уведомлений для указанной даты на основе метрик и чек-инов
+      operationId: generateNotifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateNotificationsRequest"
+      responses:
+        "200":
+          description: Уведомления сгенерированы
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateNotificationsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/chat/messages:
     get:
       summary: Get chat history
-      description: '[PLACEHOLDER] История чата с AI'
+      description: История сообщений чата по профилю.
       operationId: getChatMessages
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: before
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
-        '200':
+        "200":
           description: История чата
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMessagesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
     post:
       summary: Send message
-      description: '[PLACEHOLDER] Отправка сообщения AI'
+      description: Отправка сообщения ассистенту с сохранением истории и предложений.
       operationId: sendChatMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
       responses:
-        '200':
-          description: Ответ от AI
+        "200":
+          description: Ответ ассистента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendMessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/ai/proposals:
     get:
-      summary: Get AI proposals
-      description: '[PLACEHOLDER] Предложения от AI по улучшению здоровья'
-      operationId: getAIProposals
+      summary: List AI proposals
+      description: Список AI предложений по профилю и статусу.
+      operationId: listAIProposals
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [pending, applied, rejected]
+            default: pending
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
       responses:
-        '200':
+        "200":
           description: Список предложений
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProposalsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/ai/proposals/{id}/apply:
+    post:
+      summary: Apply AI proposal
+      description: |
+        Применение AI предложения.
+        Поддерживаемые kind: settings_update и vitamins_schedule.
+      operationId: applyAIProposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Предложение применено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyProposalResponse"
+        "400":
+          description: invalid_request / invalid_payload / unsupported_kind
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: proposal_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: not_pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/ai/proposals/{id}/reject:
+    post:
+      summary: Reject AI proposal
+      description: Отклонение AI предложения со статусом pending.
+      operationId: rejectAIProposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Предложение отклонено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RejectProposalResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: proposal_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: not_pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/schedules/supplements:
+    get:
+      summary: List supplement schedules
+      description: Получение расписаний добавок для профиля.
+      operationId: listSupplementSchedules
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Список расписаний
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSchedulesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: profile_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Upsert supplement schedule
+      description: Создание или обновление расписания по unique (supplement_id + time_minutes).
+      operationId: upsertSupplementSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertScheduleRequest"
+      responses:
+        "200":
+          description: Сохранённое расписание
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleDTO"
+        "400":
+          description: invalid_request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: profile_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/schedules/supplements/replace:
+    put:
+      summary: Replace all supplement schedules
+      description: Атомарно заменяет весь набор расписаний профиля.
+      operationId: replaceSupplementSchedules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceSchedulesRequest"
+      responses:
+        "200":
+          description: Актуальный список расписаний
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSchedulesResponse"
+        "400":
+          description: invalid_request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: profile_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/schedules/supplements/{id}:
+    delete:
+      summary: Delete supplement schedule
+      description: Удаление расписания по id.
+      operationId: deleteSupplementSchedule
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Расписание удалено
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: schedule_not_found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workouts/plan:
+    get:
+      summary: Get active workout plan
+      description: Получение активного плана тренировок для профиля
+      operationId: getWorkoutPlan
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Активный план и его элементы
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetWorkoutPlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден или не принадлежит пользователю
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workouts/plan/replace:
+    put:
+      summary: Replace workout plan
+      description: Атомарная замена всего плана тренировок и его элементов
+      operationId: replaceWorkoutPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceWorkoutPlanRequest"
+      responses:
+        "200":
+          description: План создан/обновлен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplaceWorkoutPlanResponse"
+        "400":
+          description: Невалидный запрос (>30 items, >4 items per day, etc)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workouts/completions:
+    post:
+      summary: Upsert workout completion
+      description: Создание или обновление отметки о выполнении тренировки (done/skipped)
+      operationId: upsertWorkoutCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertWorkoutCompletionRequest"
+      responses:
+        "200":
+          description: Отметка сохранена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutCompletionDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль или plan_item не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      summary: List workout completions
+      description: Получение списка отметок о выполнении тренировок за период
+      operationId: listWorkoutCompletions
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Начальная дата (YYYY-MM-DD)
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Конечная дата (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Список отметок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkoutCompletionsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workouts/today:
+    get:
+      summary: Get today's workout summary
+      description: |
+        Получение плановых тренировок на указанную дату, отметок о выполнении,
+        фактических воркаутов (опционально) и флага is_done
+      operationId: getWorkoutToday
+      parameters:
+        - in: query
+          name: profile_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Дата (YYYY-MM-DD)
+          example: "2024-01-15"
+      responses:
+        "200":
+          description: Сводка дня
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutTodayResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Nutrition Targets API ===
+
+  /v1/nutrition/targets:
+    get:
+      summary: Get nutrition targets
+      description: Возвращает целевые показатели питания для профиля. Если цели не заданы, возвращает разумные defaults и is_default=true.
+      operationId: getNutritionTargets
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID профиля
+      responses:
+        "200":
+          description: Целевые показатели питания
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetNutritionTargetsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден или не принадлежит пользователю
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      summary: Upsert nutrition targets
+      description: Создаёт или обновляет целевые показатели питания для профиля.
+      operationId: upsertNutritionTargets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertNutritionTargetsRequest"
+      responses:
+        "200":
+          description: Целевые показатели сохранены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTargetsDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Профиль не найден или не принадлежит пользователю
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Food Preferences API ===
+
+  /v1/food/prefs:
+    get:
+      summary: List food preferences
+      description: Получить список обычных продуктов с возможностью поиска
+      operationId: listFoodPrefs
+      tags:
+        - Food Preferences
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: false
+          description: Поисковый запрос (по названию)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Список продуктов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFoodPrefsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create or update food preference
+      description: Создать или обновить продукт
+      operationId: upsertFoodPref
+      tags:
+        - Food Preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertFoodPrefRequest"
+      responses:
+        "200":
+          description: Продукт создан или обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodPrefDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+        "409":
+          description: Продукт с таким названием уже существует или достигнут лимит (200)
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/food/prefs/{id}:
+    delete:
+      summary: Delete food preference
+      description: Удалить продукт
+      operationId: deleteFoodPref
+      tags:
+        - Food Preferences
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Продукт удалён
+        "401":
+          description: Неавторизован
+        "404":
+          description: Продукт не найден или не принадлежит пользователю
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # === Meal Plans API ===
+
+  /v1/meal/plan:
+    get:
+      summary: Get active meal plan
+      description: Получить активный план питания для профиля
+      operationId: getMealPlan
+      tags:
+        - Meal Plans
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: План питания (может быть пустым)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMealPlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete active meal plan
+      description: Удалить активный план питания
+      operationId: deleteMealPlan
+      tags:
+        - Meal Plans
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: План удалён
+        "401":
+          description: Неавторизован
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/meal/plan/replace:
+    put:
+      summary: Replace meal plan
+      description: Заменить активный план питания новым (атомарная операция)
+      operationId: replaceMealPlan
+      tags:
+        - Meal Plans
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceMealPlanRequest"
+      responses:
+        "200":
+          description: План заменён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMealPlanResponse"
+        "400":
+          description: Невалидные данные (дубликаты day+slot, превышен лимит 28 items)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Неавторизован
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/meal/today:
+    get:
+      summary: Get today's meal plan items
+      description: Получить блюда из плана на сегодня (вычисляет day_index по дате)
+      operationId: getMealToday
+      tags:
+        - Meal Plans
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: false
+          description: Дата в формате YYYY-MM-DD (по умолчанию сегодня)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Блюда на сегодня
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetTodayResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Неавторизован
+        "500":
+          $ref: "#/components/responses/InternalError"
 
 components:
   schemas:
-    # Схемы будут добавлены по мере реализации эндпоинтов
-    Error:
+    # --- Profiles ---
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          description: ID владельца (default для MVP)
+        type:
+          type: string
+          enum: [owner, guest]
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, owner_user_id, type, name, created_at, updated_at]
+
+    ProfilesResponse:
+      type: object
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Profile"
+      required: [profiles]
+
+    CreateProfileRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [guest]
+        name:
+          type: string
+          minLength: 1
+      required: [type, name]
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+      required: [name]
+
+    # --- Metrics ---
+
+    SyncBatchRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        client_time_zone:
+          type: string
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyAggregate"
+        hourly:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyBucket"
+        sessions:
+          $ref: "#/components/schemas/Sessions"
+      required: [profile_id]
+
+    SyncBatchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        upserted_daily:
+          type: integer
+        upserted_hourly:
+          type: integer
+        inserted_sleep_segments:
+          type: integer
+        inserted_workouts:
+          type: integer
+
+    DailyAggregate:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        sleep:
+          $ref: "#/components/schemas/SleepDaily"
+        activity:
+          $ref: "#/components/schemas/ActivityDaily"
+        body:
+          $ref: "#/components/schemas/BodyDaily"
+        heart:
+          $ref: "#/components/schemas/HeartDaily"
+        nutrition:
+          $ref: "#/components/schemas/NutritionDaily"
+        intakes:
+          $ref: "#/components/schemas/IntakesDaily"
+        temperature:
+          $ref: "#/components/schemas/TemperatureDaily"
+
+    SleepDaily:
+      type: object
+      properties:
+        total_minutes:
+          type: integer
+        stages:
+          type: object
+          properties:
+            rem:
+              type: integer
+            deep:
+              type: integer
+            core:
+              type: integer
+            awake:
+              type: integer
+
+    ActivityDaily:
+      type: object
+      properties:
+        steps:
+          type: integer
+        active_energy_kcal:
+          type: integer
+        exercise_min:
+          type: integer
+        stand_hours:
+          type: integer
+        distance_km:
+          type: number
+          format: double
+
+    BodyDaily:
+      type: object
+      properties:
+        weight_kg_last:
+          type: number
+          format: double
+        bmi:
+          type: number
+          format: double
+        body_fat_pct:
+          type: number
+          format: double
+
+    HeartDaily:
+      type: object
+      properties:
+        resting_hr_bpm:
+          type: integer
+
+    NutritionDaily:
+      type: object
+      properties:
+        energy_kcal:
+          type: integer
+        protein_g:
+          type: integer
+        fat_g:
+          type: integer
+        carbs_g:
+          type: integer
+        calcium_mg:
+          type: integer
+
+    IntakesDaily:
+      type: object
+      properties:
+        water_ml:
+          type: integer
+        vitamins_taken:
+          type: array
+          items:
+            type: string
+
+    TemperatureDaily:
+      type: object
+      properties:
+        wrist_c_avg:
+          type: number
+          format: double
+        wrist_c_min:
+          type: number
+          format: double
+        wrist_c_max:
+          type: number
+          format: double
+
+    HourlyBucket:
+      type: object
+      properties:
+        hour:
+          type: string
+          format: date-time
+        steps:
+          type: integer
+        hr:
+          type: object
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+            avg:
+              type: integer
+
+    Sessions:
+      type: object
+      properties:
+        sleep_segments:
+          type: array
+          items:
+            type: object
+        workouts:
+          type: array
+          items:
+            type: object
+
+    DailyMetricsResponse:
+      type: object
+      properties:
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyAggregate"
+
+    HourlyMetricsResponse:
+      type: object
+      properties:
+        hourly:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyBucket"
+
+    # --- Checkins ---
+
+    Checkin:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: "Дата чекина (YYYY-MM-DD)"
+        type:
+          type: string
+          enum: [morning, evening]
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: "Оценка самочувствия (1-5)"
+        tags:
+          type: array
+          items:
+            type: string
+          description: "Теги (показываются при score <= 2)"
+          example: ["стресс", "усталость", "головная боль"]
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, profile_id, date, type, score, created_at, updated_at]
+
+    UpsertCheckinRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        type:
+          type: string
+          enum: [morning, evening]
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+      required: [profile_id, date, type, score]
+
+    CheckinsResponse:
+      type: object
+      properties:
+        checkins:
+          type: array
+          items:
+            $ref: "#/components/schemas/Checkin"
+      required: [checkins]
+
+    # --- Feed ---
+
+    FeedDayResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        profile_id:
+          type: string
+          format: uuid
+        daily:
+          type: object
+          nullable: true
+          description: "Daily metrics (DailyAggregate) или null если нет данных"
+        checkins:
+          type: object
+          properties:
+            morning:
+              $ref: "#/components/schemas/CheckinSummary"
+            evening:
+              $ref: "#/components/schemas/CheckinSummary"
+        nutrition_targets:
+          allOf:
+            - $ref: "#/components/schemas/NutritionTargetsDTO"
+          nullable: true
+          description: "Целевые показатели питания для профиля (null если не заданы)"
+        nutrition_progress:
+          allOf:
+            - $ref: "#/components/schemas/NutritionProgressDTO"
+          nullable: true
+          description: "Прогресс по питанию за день (null если нет целей или данных)"
+        meal_today:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealPlanItemDTO"
+          nullable: true
+          description: "Блюда из плана питания на сегодня (null если нет активного плана)"
+        meal_plan_title:
+          type: string
+          nullable: true
+          description: "Название активного плана питания (null если нет плана)"
+        food_prefs_count:
+          type: integer
+          nullable: true
+          description: "Количество обычных продуктов профиля (null если не запрошено)"
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: |
+            Список отсутствующих данных. Возможные значения:
+            - "daily" — нет дневных метрик
+            - "morning_checkin" — нет утреннего чекина
+            - "evening_checkin" — нет вечернего чекина
+            - "weight" — нет данных о весе
+            - "resting_hr" — нет данных о пульсе в покое
+          example: ["morning_checkin", "weight"]
+      required: [date, profile_id, daily, checkins, missing_fields]
+
+    CheckinSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, score, created_at, updated_at]
+
+    # --- Reports ---
+
+    CreateReportRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date
+          description: "Начало периода (YYYY-MM-DD)"
+          example: "2026-02-06"
+        to:
+          type: string
+          format: date
+          description: "Конец периода (YYYY-MM-DD)"
+          example: "2026-02-12"
+        format:
+          type: string
+          enum: [pdf, csv]
+          description: "Формат отчёта"
+      required: [profile_id, from, to, format]
+
+    ReportDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        format:
+          type: string
+          enum: [pdf, csv]
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        download_url:
+          type: string
+          description: "URL для скачивания (абсолютный или относительный)"
+        size_bytes:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [ready, failed]
+        created_at:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          profile_id,
+          format,
+          from,
+          to,
+          download_url,
+          size_bytes,
+          status,
+          created_at,
+        ]
+
+    ReportsResponse:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportDTO"
+      required: [reports]
+
+    # --- Sources ---
+
+    CreateSourceRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [link, note]
+        title:
+          type: string
+        text:
+          type: string
+          description: "Обязательно для kind=note"
+        url:
+          type: string
+          description: "Обязательно для kind=link"
+        checkin_id:
+          type: string
+          format: uuid
+      required: [profile_id, kind]
+
+    SourceDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [link, note, image]
+        title:
+          type: string
+        text:
+          type: string
+        url:
+          type: string
+        checkin_id:
+          type: string
+          format: uuid
+        content_type:
+          type: string
+          description: "MIME type для images"
+        size_bytes:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+      required: [id, profile_id, kind, created_at]
+
+    SourcesResponse:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceDTO"
+      required: [sources]
+
+    # --- Notifications/Inbox ---
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            [
+              low_sleep,
+              low_activity,
+              missing_morning_checkin,
+              missing_evening_checkin,
+            ]
+        title:
+          type: string
+        body:
+          type: string
+        source_date:
+          type: string
+          format: date
+          description: "Дата, к которой относится уведомление"
+        severity:
+          type: string
+          enum: [info, warn]
+        created_at:
+          type: string
+          format: date-time
+        read_at:
+          type: string
+          format: date-time
+      required: [id, profile_id, kind, title, body, severity, created_at]
+
+    InboxListResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+      required: [notifications]
+
+    UnreadCountResponse:
+      type: object
+      properties:
+        unread:
+          type: integer
+      required: [unread]
+
+    MarkReadRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required: [profile_id, ids]
+
+    MarkReadResponse:
+      type: object
+      properties:
+        marked:
+          type: integer
+      required: [marked]
+
+    MarkAllReadRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+      required: [profile_id]
+
+    MarkAllReadResponse:
+      type: object
+      properties:
+        marked:
+          type: integer
+      required: [marked]
+
+    GenerateNotificationsRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        client_time_zone:
+          type: string
+          example: "Europe/Moscow"
+        now:
+          type: string
+          format: date-time
+        thresholds:
+          type: object
+          properties:
+            sleep_min_minutes:
+              type: integer
+            steps_min:
+              type: integer
+            active_energy_min_kcal:
+              type: integer
+      required: [profile_id, date, client_time_zone, now, thresholds]
+
+    GenerateNotificationsResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+        updated:
+          type: integer
+        skipped:
+          type: integer
+      required: [created, updated, skipped]
+
+    # --- Common ---
+
+    SIWAAuthRequest:
+      type: object
+      properties:
+        identity_token:
+          type: string
+          description: Apple identity token от ASAuthorizationAppleIDCredential
+        user:
+          type: string
+          description: Apple user identifier (credential.user)
+        email:
+          type: string
+          description: Email из Apple credential (может быть только при первом входе)
+        full_name:
+          type: string
+          description: Полное имя пользователя (опционально)
+      required: [identity_token]
+
+    SIWAAuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          format: int64
+          description: Время жизни токена в секундах
+          example: 2592000
+        user_id:
+          type: string
+          description: Внутренний user_id (`APPLE_SUB_PREFIX + sub`)
+      required: [access_token, token_type, expires_in, user_id]
+
+    DevAuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          format: int64
+          description: Время жизни токена в секундах
+          example: 2592000
+      required: [access_token, token_type, expires_in]
+
+    EmailOTPRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          example: "user@example.com"
+      required: [email]
+
+    EmailOTPRequestResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        debug_code:
+          type: string
+          description: |
+            Присутствует только в локальном режиме при APP_ENV=local и OTP_DEBUG_RETURN_CODE=1.
+            В production отсутствует.
+      required: [status]
+
+    EmailOTPVerifyRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          example: "user@example.com"
+        code:
+          type: string
+          example: "123456"
+      required: [email, code]
+
+    EmailOTPVerifyResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          format: int64
+          example: 2592000
+        user_id:
+          type: string
+          example: "email:user@example.com"
+      required: [access_token, token_type, expires_in, user_id]
+
+    SettingsDTO:
+      type: object
+      properties:
+        time_zone:
+          type: string
+          nullable: true
+          example: "Europe/Moscow"
+        quiet_start_minutes:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1439
+          example: 1380
+        quiet_end_minutes:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1439
+          example: 480
+        notifications_max_per_day:
+          type: integer
+          minimum: 0
+          maximum: 10
+          example: 4
+        min_sleep_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1200
+          example: 420
+        min_steps:
+          type: integer
+          minimum: 0
+          maximum: 50000
+          example: 6000
+        min_active_energy_kcal:
+          type: integer
+          minimum: 0
+          maximum: 5000
+          example: 250
+        morning_checkin_time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 540
+        evening_checkin_time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 1260
+        vitamins_time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 720
+      required:
+        - notifications_max_per_day
+        - min_sleep_minutes
+        - min_steps
+        - min_active_energy_kcal
+        - morning_checkin_time_minutes
+        - evening_checkin_time_minutes
+        - vitamins_time_minutes
+
+    SettingsResponse:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/SettingsDTO"
+        is_default:
+          type: boolean
+      required: [settings, is_default]
+
+    ChatMessageDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, role, content, created_at]
+
+    ProposalDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            [
+              settings_update,
+              vitamins_schedule,
+              workout_plan,
+              nutrition_plan,
+              generic,
+            ]
+        title:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+          enum: [pending, applied, rejected]
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+        [id, profile_id, kind, title, summary, status, payload, created_at]
+
+    ProposalVitaminsSchedulePayload:
+      type: object
+      properties:
+        replace:
+          type: boolean
+          enum: [true]
+        items:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/ProposalVitaminsScheduleItem"
+      required: [replace, items]
+
+    ProposalVitaminsScheduleItem:
+      type: object
+      properties:
+        supplement_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          example: "Магний"
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 720
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+          example: 127
+        is_enabled:
+          type: boolean
+          default: true
+      required: [supplement_name, time_minutes, days_mask]
+
+    ScheduleDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplement_id:
+          type: string
+          format: uuid
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+        is_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          supplement_id,
+          time_minutes,
+          days_mask,
+          is_enabled,
+          created_at,
+          updated_at,
+        ]
+
+    ListSchedulesResponse:
+      type: object
+      properties:
+        schedules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleDTO"
+      required: [schedules]
+
+    UpsertScheduleRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        supplement_id:
+          type: string
+          format: uuid
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+        is_enabled:
+          type: boolean
+      required: [profile_id, supplement_id, time_minutes, days_mask, is_enabled]
+
+    ReplaceScheduleItem:
+      type: object
+      properties:
+        supplement_id:
+          type: string
+          format: uuid
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+        is_enabled:
+          type: boolean
+      required: [supplement_id, time_minutes, days_mask, is_enabled]
+
+    ReplaceSchedulesRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        replace:
+          type: boolean
+          enum: [true]
+        schedules:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/ReplaceScheduleItem"
+      required: [profile_id, replace, schedules]
+
+    SendMessageRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+          minLength: 1
+      required: [profile_id, content]
+
+    SendMessageResponse:
+      type: object
+      properties:
+        assistant_message:
+          $ref: "#/components/schemas/ChatMessageDTO"
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalDTO"
+      required: [assistant_message, proposals]
+
+    ListMessagesResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessageDTO"
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+      required: [messages]
+
+    ListProposalsResponse:
+      type: object
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalDTO"
+      required: [proposals]
+
+    ApplyProposalResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [applied]
+        applied:
+          type: object
+          properties:
+            settings:
+              $ref: "#/components/schemas/SettingsDTO"
+            schedules_created:
+              type: integer
+              minimum: 0
+            workout_items_created:
+              type: integer
+              minimum: 0
+              description: Количество созданных элементов тренировочного плана
+            nutrition_targets_updated:
+              type: boolean
+              description: Обновлены ли целевые показатели питания
+      required: [status]
+
+    RejectProposalResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["rejected"]
+      required: ["status"]
+
+    # --- Workout Plans ---
+
+    WorkoutPlanDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "План на неделю"
+        goal:
+          type: string
+          enum: [cardio, strength, flexibility, general]
+          example: "cardio"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - profile_id
+        - title
+        - goal
+        - is_active
+        - created_at
+        - updated_at
+
+    WorkoutItemDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [run, walk, strength, morning, core, other]
+          example: "run"
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          description: Время суток в минутах (0-1439)
+          example: 420
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+          description: Битовая маска дней (пн=1, вт=2, ср=4, чт=8, пт=16, сб=32, вс=64)
+          example: 127
+        duration_min:
+          type: integer
+          minimum: 1
+          maximum: 300
+          description: Длительность в минутах
+          example: 30
+        intensity:
+          type: string
+          enum: [low, medium, high]
+          example: "medium"
+        note:
+          type: string
+          example: "Легкая пробежка в парке"
+        details:
+          type: object
+          additionalProperties: true
+          description: Дополнительные детали (exercises, intervals, etc)
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - kind
+        - time_minutes
+        - days_mask
+        - duration_min
+        - intensity
+        - note
+        - created_at
+        - updated_at
+
+    WorkoutCompletionDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        plan_item_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [done, skipped]
+          example: "done"
+        note:
+          type: string
+          example: "Пробежал 5км"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - date
+        - plan_item_id
+        - status
+        - note
+        - created_at
+        - updated_at
+
+    WorkoutSessionDTO:
+      type: object
+      description: Фактическая тренировка из HealthKit
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        label:
+          type: string
+          example: "Running"
+        calories_kcal:
+          type: integer
+          nullable: true
+          example: 250
+      required:
+        - start
+        - end
+        - label
+
+    GetWorkoutPlanResponse:
+      type: object
+      properties:
+        plan:
+          $ref: "#/components/schemas/WorkoutPlanDTO"
+          nullable: true
+          description: Активный план (null если нет)
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutItemDTO"
+          description: Элементы плана (пустой массив если нет плана)
+      required:
+        - items
+
+    ReplaceWorkoutPlanRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "План на неделю"
+        goal:
+          type: string
+          enum: [cardio, strength, flexibility, general]
+          example: "cardio"
+        replace:
+          type: boolean
+          enum: [true]
+          description: Всегда должно быть true для replace операции
+        items:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/WorkoutItemUpsert"
+      required:
+        - profile_id
+        - title
+        - goal
+        - replace
+        - items
+
+    WorkoutItemUpsert:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [run, walk, strength, morning, core, other]
+          example: "run"
+        time_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 420
+        days_mask:
+          type: integer
+          minimum: 0
+          maximum: 127
+          example: 127
+        duration_min:
+          type: integer
+          minimum: 1
+          maximum: 300
+          example: 30
+        intensity:
+          type: string
+          enum: [low, medium, high]
+          example: "medium"
+        note:
+          type: string
+          maxLength: 500
+          example: "Легкая пробежка"
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: JSON объект, максимум 16KB
+      required:
+        - kind
+        - time_minutes
+        - days_mask
+        - duration_min
+        - intensity
+        - note
+
+    ReplaceWorkoutPlanResponse:
+      type: object
+      properties:
+        plan:
+          $ref: "#/components/schemas/WorkoutPlanDTO"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutItemDTO"
+      required:
+        - plan
+        - items
+
+    UpsertWorkoutCompletionRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        plan_item_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [done, skipped]
+          example: "done"
+        note:
+          type: string
+          maxLength: 500
+          example: "Отличная пробежка"
+      required:
+        - profile_id
+        - date
+        - plan_item_id
+        - status
+        - note
+
+    ListWorkoutCompletionsResponse:
+      type: object
+      properties:
+        completions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutCompletionDTO"
+      required:
+        - completions
+
+    WorkoutTodayResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        profile_id:
+          type: string
+          format: uuid
+        planned:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutItemDTO"
+          description: Запланированные тренировки на этот день
+        completions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutCompletionDTO"
+          description: Отметки о выполнении
+        actual_workouts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutSessionDTO"
+          description: Фактические тренировки из HealthKit (опционально)
+        is_done:
+          type: boolean
+          description: Все ли запланированные тренировки выполнены
+          example: false
+      required:
+        - date
+        - profile_id
+        - planned
+        - completions
+        - actual_workouts
+        - is_done
+
+    # --- Nutrition Targets ---
+
+    NutritionTargetsDTO:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+          description: ID профиля
+        calories_kcal:
+          type: integer
+          minimum: 800
+          maximum: 6000
+          description: Целевое количество калорий в день (ккал)
+          example: 2200
+        protein_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество белка в день (г)
+          example: 120
+        fat_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество жиров в день (г)
+          example: 70
+        carbs_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество углеводов в день (г)
+          example: 250
+        calcium_mg:
+          type: integer
+          minimum: 0
+          maximum: 5000
+          description: Целевое количество кальция в день (мг)
+          example: 800
+        created_at:
+          type: string
+          format: date-time
+          description: Время создания
+        updated_at:
+          type: string
+          format: date-time
+          description: Время последнего обновления
+      required:
+        - profile_id
+        - calories_kcal
+        - protein_g
+        - fat_g
+        - carbs_g
+        - calcium_mg
+        - created_at
+        - updated_at
+
+    GetNutritionTargetsResponse:
+      type: object
+      properties:
+        targets:
+          $ref: "#/components/schemas/NutritionTargetsDTO"
+        is_default:
+          type: boolean
+          description: true если возвращены дефолтные значения (цели не заданы пользователем)
+          example: false
+      required:
+        - targets
+        - is_default
+
+    UpsertNutritionTargetsRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+          description: ID профиля
+        calories_kcal:
+          type: integer
+          minimum: 800
+          maximum: 6000
+          description: Целевое количество калорий в день (ккал)
+          example: 2200
+        protein_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество белка в день (г)
+          example: 120
+        fat_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество жиров в день (г)
+          example: 70
+        carbs_g:
+          type: integer
+          minimum: 0
+          maximum: 400
+          description: Целевое количество углеводов в день (г)
+          example: 250
+        calcium_mg:
+          type: integer
+          minimum: 0
+          maximum: 5000
+          description: Целевое количество кальция в день (мг)
+          example: 800
+      required:
+        - profile_id
+        - calories_kcal
+        - protein_g
+        - fat_g
+        - carbs_g
+        - calcium_mg
+
+    # --- Food Preferences ---
+
+    FoodPrefDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Название продукта
+        tags:
+          type: array
+          items:
+            type: string
+          description: Теги (например, "fruit", "protein", "breakfast")
+        kcal_per_100g:
+          type: integer
+          minimum: 0
+          description: Калории на 100г
+        protein_g_per_100g:
+          type: integer
+          minimum: 0
+          description: Белки на 100г (г)
+        fat_g_per_100g:
+          type: integer
+          minimum: 0
+          description: Жиры на 100г (г)
+        carbs_g_per_100g:
+          type: integer
+          minimum: 0
+          description: Углеводы на 100г (г)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - profile_id
+        - name
+        - tags
+        - kcal_per_100g
+        - protein_g_per_100g
+        - fat_g_per_100g
+        - carbs_g_per_100g
+        - created_at
+        - updated_at
+
+    ListFoodPrefsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodPrefDTO"
+        total:
+          type: integer
+          description: Общее количество продуктов (без учёта offset)
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required:
+        - items
+        - total
+        - limit
+        - offset
+
+    UpsertFoodPrefRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Название продукта
+        tags:
+          type: array
+          items:
+            type: string
+          description: Теги
+        kcal_per_100g:
+          type: integer
+          minimum: 0
+          default: 0
+        protein_g_per_100g:
+          type: integer
+          minimum: 0
+          default: 0
+        fat_g_per_100g:
+          type: integer
+          minimum: 0
+          default: 0
+        carbs_g_per_100g:
+          type: integer
+          minimum: 0
+          default: 0
+      required:
+        - profile_id
+        - name
+        - tags
+
+    # --- Meal Plans ---
+
+    MealPlanDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: Название плана
+        is_active:
+          type: boolean
+          description: Активный план
+        from_date:
+          type: string
+          format: date
+          nullable: true
+          description: Дата начала (null = начинается с текущей недели)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - profile_id
+        - title
+        - is_active
+        - created_at
+        - updated_at
+
+    MealPlanItemDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        day_index:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: День недели (0 = воскресенье, 1 = понедельник, ..., 6 = суббота)
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+          description: Приём пищи
+        title:
+          type: string
+          description: Название блюда
+        notes:
+          type: string
+          description: Заметки
+        approx_kcal:
+          type: integer
+          minimum: 0
+          description: Примерная калорийность
+        approx_protein_g:
+          type: integer
+          minimum: 0
+          description: Примерное количество белка (г)
+        approx_fat_g:
+          type: integer
+          minimum: 0
+          description: Примерное количество жиров (г)
+        approx_carbs_g:
+          type: integer
+          minimum: 0
+          description: Примерное количество углеводов (г)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - profile_id
+        - plan_id
+        - day_index
+        - meal_slot
+        - title
+        - notes
+        - approx_kcal
+        - approx_protein_g
+        - approx_fat_g
+        - approx_carbs_g
+        - created_at
+        - updated_at
+
+    GetMealPlanResponse:
+      type: object
+      properties:
+        plan:
+          allOf:
+            - $ref: "#/components/schemas/MealPlanDTO"
+          nullable: true
+          description: Активный план (null если нет)
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealPlanItemDTO"
+          description: Блюда плана
+      required:
+        - plan
+        - items
+
+    ReplaceMealPlanRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealPlanItemUpsertDTO"
+          minItems: 1
+          maxItems: 28
+          description: Блюда плана (максимум 28 = 7 дней × 4 слота)
+      required:
+        - profile_id
+        - title
+        - items
+
+    MealPlanItemUpsertDTO:
+      type: object
+      properties:
+        day_index:
+          type: integer
+          minimum: 0
+          maximum: 6
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        notes:
+          type: string
+          default: ""
+        approx_kcal:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+        approx_protein_g:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 0
+        approx_fat_g:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 0
+        approx_carbs_g:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 0
+      required:
+        - day_index
+        - meal_slot
+        - title
+
+    GetTodayResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: Дата в формате YYYY-MM-DD
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealPlanItemDTO"
+          description: Блюда на указанную дату
+      required:
+        - date
+        - items
+
+    NutritionProgressDTO:
+      type: object
+      properties:
+        actual_calories_kcal:
+          type: integer
+          description: Фактическое потребление калорий
+          example: 1850
+        actual_protein_g:
+          type: integer
+          description: Фактическое потребление белка
+          example: 95
+        actual_fat_g:
+          type: integer
+          description: Фактическое потребление жиров
+          example: 62
+        actual_carbs_g:
+          type: integer
+          description: Фактическое потребление углеводов
+          example: 220
+        actual_calcium_mg:
+          type: integer
+          description: Фактическое потребление кальция
+          example: 650
+        calories_percent:
+          type: integer
+          description: Процент выполнения цели по калориям
+          example: 84
+        protein_percent:
+          type: integer
+          description: Процент выполнения цели по белку
+          example: 79
+        fat_percent:
+          type: integer
+          description: Процент выполнения цели по жирам
+          example: 89
+        carbs_percent:
+          type: integer
+          description: Процент выполнения цели по углеводам
+          example: 88
+        calcium_percent:
+          type: integer
+          description: Процент выполнения цели по кальцию
+          example: 81
+      required:
+        - actual_calories_kcal
+        - actual_protein_g
+        - actual_fat_g
+        - actual_carbs_g
+        - actual_calcium_mg
+        - calories_percent
+        - protein_percent
+        - fat_percent
+        - carbs_percent
+        - calcium_percent
+
+    ErrorResponse:
       type: object
       properties:
         error:
-          type: string
-        message:
-          type: string
-      required:
-        - error
+          type: object
+          properties:
+            code:
+              type: string
+              description: Код ошибки
+              example: "invalid_range"
+            message:
+              type: string
+              description: Описание ошибки
+              example: "Date range exceeds maximum of 90 days"
+          required: [code, message]
+      required: [error]
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
 
   securitySchemes:
-    # Будущая аутентификация (SIWA + JWT)
-    bearerAuth:
+    BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: |
+        JWT токен, полученный через POST /v1/auth/dev, /v1/auth/siwa или /v1/auth/email/verify.
+        При AUTH_MODE=none токен не обязателен; при наличии токена сервер валидирует его.
+        Header: Authorization: Bearer <jwt>
 
-# Аутентификация пока не применяется
+# По умолчанию аутентификация НЕ применяется (AUTH_MODE=none).
+# Когда включится строгая защита, добавить security на защищённые эндпоинты:
 # security:
-#   - bearerAuth: []
+#   - BearerAuth: []

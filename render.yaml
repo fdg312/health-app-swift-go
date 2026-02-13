@@ -1,0 +1,113 @@
+# Render Blueprint — Health Hub Backend
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Usage:
+#   1. Push this file to your repo root.
+#   2. In Render Dashboard → New → Blueprint → select this repo.
+#   3. Fill in the env var values (secrets) when prompted.
+
+services:
+  - type: web
+    name: health-hub-api
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    region: frankfurt # fra — closest to RU; change if needed
+
+    # Health check
+    healthCheckPath: /healthz
+
+    # Scaling
+    plan: starter # or free for testing
+
+    # Build & deploy
+    autoDeploy: true
+    branch: main
+
+    envVars:
+      # ---- Core ----
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+
+      # ---- Database (Neon) ----
+      # Pooled connection for runtime queries (port 5432, pgbouncer)
+      - key: DATABASE_URL_POOLED
+        sync: false
+      # Direct connection for DDL / migrations (port 5432, direct endpoint)
+      - key: DATABASE_URL_DIRECT
+        sync: false
+
+      # ---- Migrations ----
+      - key: RUN_MIGRATIONS_ON_STARTUP
+        value: "1"
+
+      # ---- Auth ----
+      - key: AUTH_MODE
+        value: dev
+      - key: AUTH_REQUIRED
+        value: "1"
+      # EMAIL_AUTH_ENABLED auto-derives from AUTH_MODE (dev → true)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OTP_SECRET
+        generateValue: true
+      - key: JWT_TTL_MINUTES
+        value: "10080"
+
+      # ---- Email (SMTP for OTP in production) ----
+      - key: EMAIL_SENDER_MODE
+        value: smtp
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: "HealthHub <no-reply@yourdomain.com>"
+      - key: SMTP_USE_TLS
+        value: "1"
+
+      # ---- Blob / S3 (Yandex Object Storage) ----
+      - key: BLOB_MODE
+        value: s3
+      - key: REPORTS_MODE
+        value: s3
+      - key: S3_ENDPOINT
+        value: "https://storage.yandexcloud.net"
+      - key: S3_REGION
+        value: ru-central1
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # Path-style public URL: https://storage.yandexcloud.net/<bucket>
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      - key: S3_PRESIGN_TTL_SECONDS
+        value: "900"
+      - key: S3_PREFER_PUBLIC_URL
+        value: "0"
+
+      # ---- AI (optional) ----
+      - key: AI_MODE
+        value: mock
+      # - key: OPENAI_API_KEY
+      #   sync: false
+
+      # ---- CORS ----
+      # Add your iOS app scheme or web frontend origin here
+      # - key: CORS_ALLOWED_ORIGINS
+      #   value: "https://yourdomain.com"
+
+      # ---- Rate Limiting (optional) ----
+      # - key: RATE_LIMIT_RPS
+      #   value: "10"
+      # - key: RATE_LIMIT_BURST
+      #   value: "30"

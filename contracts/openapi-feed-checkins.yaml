@@ -1,0 +1,322 @@
+# DEPRECATED — содержимое этого файла объединено в contracts/openapi.yaml (canonical).
+# Этот файл оставлен для истории. Не используйте его как источник истины.
+#
+# Additions to openapi.yaml for Checkins and Feed endpoints
+# This file documents the newly implemented endpoints
+# To integrate: merge these paths and schemas into the main openapi.yaml
+
+paths:
+  /v1/checkins:
+    get:
+      summary: List check-ins
+      description: Получение списка чекинов за период
+      operationId: listCheckins
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-01"
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-28"
+      responses:
+        '200':
+          description: Список чекинов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckinsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create or update check-in
+      description: |
+        Создание или обновление чекина (UPSERT по profile_id, date, type).
+        Если чекин с такой комбинацией уже существует - обновляется.
+      operationId: upsertCheckin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertCheckinRequest'
+      responses:
+        '200':
+          description: Чекин создан или обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkin'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/checkins/{id}:
+    delete:
+      summary: Delete check-in
+      description: Удаление чекина по ID
+      operationId: deleteCheckin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Чекин удален
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/feed/day:
+    get:
+      summary: Get day summary
+      description: |
+        Получение сводки дня: объединяет daily metrics и checkins за конкретную дату.
+        Возвращает 200 даже если данных нет - в этом случае missing_fields будет содержать список отсутствующих данных.
+      operationId: getFeedDay
+      parameters:
+        - name: profile_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-02-12"
+      responses:
+        '200':
+          description: Сводка дня
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedDayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  schemas:
+    Checkin:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: "Дата чекина (YYYY-MM-DD)"
+        type:
+          type: string
+          enum: [morning, evening]
+          description: "Тип чекина"
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: "Оценка самочувствия (1-5)"
+        tags:
+          type: array
+          items:
+            type: string
+          description: "Теги (показываются при score <= 2)"
+          example: ["стресс", "усталость", "головная боль"]
+        note:
+          type: string
+          description: "Заметка пользователя"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - profile_id
+        - date
+        - type
+        - score
+        - created_at
+        - updated_at
+
+    UpsertCheckinRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        type:
+          type: string
+          enum: [morning, evening]
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+      required:
+        - profile_id
+        - date
+        - type
+        - score
+
+    CheckinsResponse:
+      type: object
+      properties:
+        checkins:
+          type: array
+          items:
+            $ref: '#/components/schemas/Checkin'
+      required:
+        - checkins
+
+    FeedDayResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: "Дата сводки"
+        profile_id:
+          type: string
+          format: uuid
+        daily:
+          type: object
+          nullable: true
+          description: "Daily metrics (DailyAggregate) или null если нет данных"
+        checkins:
+          type: object
+          properties:
+            morning:
+              $ref: '#/components/schemas/CheckinSummary'
+            evening:
+              $ref: '#/components/schemas/CheckinSummary'
+        missing_fields:
+          type: array
+          items:
+            type: string
+          description: |
+            Список отсутствующих данных. Возможные значения:
+            - "daily" - нет дневных метрик
+            - "morning_checkin" - нет утреннего чекина
+            - "evening_checkin" - нет вечернего чекина
+            - "weight" - нет данных о весе
+            - "resting_hr" - нет данных о пульсе в покое
+          example: ["morning_checkin", "weight"]
+      required:
+        - date
+        - profile_id
+        - daily
+        - checkins
+        - missing_fields
+
+    CheckinSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          items:
+            type: string
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - score
+        - created_at
+        - updated_at
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: "Код ошибки"
+              example: "profile_not_found"
+            message:
+              type: string
+              description: "Описание ошибки"
+              example: "profile not found"
+          required:
+            - code
+            - message
+      required:
+        - error

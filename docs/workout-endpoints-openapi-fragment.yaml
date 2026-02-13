@@ -1,0 +1,538 @@
+# Workout Plan API Endpoints Fragment
+#
+# ⚠️ DEPRECATED - Already integrated into contracts/openapi.yaml v0.18.0
+# This file is kept for historical reference only.
+# DO NOT manually integrate - use contracts/openapi.yaml as the canonical source.
+
+/v1/workouts/plan:
+  get:
+    summary: Get active workout plan
+    description: Получение активного плана тренировок для профиля
+    operationId: getWorkoutPlan
+    parameters:
+      - in: query
+        name: profile_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+    responses:
+      "200":
+        description: Активный план и его элементы
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetWorkoutPlanResponse"
+      "400":
+        $ref: "#/components/responses/BadRequest"
+      "401":
+        description: Неавторизован
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Профиль не найден или не принадлежит пользователю
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        $ref: "#/components/responses/InternalError"
+
+/v1/workouts/plan/replace:
+  put:
+    summary: Replace workout plan
+    description: Атомарная замена всего плана тренировок и его элементов
+    operationId: replaceWorkoutPlan
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReplaceWorkoutPlanRequest"
+    responses:
+      "200":
+        description: План создан/обновлен
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceWorkoutPlanResponse"
+      "400":
+        description: Невалидный запрос (>30 items, >4 items per day, etc)
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Неавторизован
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Профиль не найден
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        $ref: "#/components/responses/InternalError"
+
+/v1/workouts/completions:
+  post:
+    summary: Upsert workout completion
+    description: Создание или обновление отметки о выполнении тренировки (done/skipped)
+    operationId: upsertWorkoutCompletion
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/UpsertWorkoutCompletionRequest"
+    responses:
+      "200":
+        description: Отметка сохранена
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutCompletionDTO"
+      "400":
+        $ref: "#/components/responses/BadRequest"
+      "401":
+        description: Неавторизован
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Профиль или plan_item не найден
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        $ref: "#/components/responses/InternalError"
+
+  get:
+    summary: List workout completions
+    description: Получение списка отметок о выполнении тренировок за период
+    operationId: listWorkoutCompletions
+    parameters:
+      - in: query
+        name: profile_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Начальная дата (YYYY-MM-DD)
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Конечная дата (YYYY-MM-DD)
+    responses:
+      "200":
+        description: Список отметок
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListWorkoutCompletionsResponse"
+      "400":
+        $ref: "#/components/responses/BadRequest"
+      "401":
+        description: Неавторизован
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Профиль не найден
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        $ref: "#/components/responses/InternalError"
+
+/v1/workouts/today:
+  get:
+    summary: Get today's workout summary
+    description: |
+      Получение плановых тренировок на указанную дату, отметок о выполнении,
+      фактических воркаутов (опционально) и флага is_done
+    operationId: getWorkoutToday
+    parameters:
+      - in: query
+        name: profile_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Дата (YYYY-MM-DD)
+        example: "2024-01-15"
+    responses:
+      "200":
+        description: Сводка дня
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutTodayResponse"
+      "400":
+        $ref: "#/components/responses/BadRequest"
+      "401":
+        description: Неавторизован
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Профиль не найден
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "500":
+        $ref: "#/components/responses/InternalError"
+
+  # Schemas to add in components/schemas section:
+
+  WorkoutPlanDTO:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      profile_id:
+        type: string
+        format: uuid
+      title:
+        type: string
+        example: "План на неделю"
+      goal:
+        type: string
+        enum: [cardio, strength, flexibility, general]
+        example: "cardio"
+      is_active:
+        type: boolean
+        example: true
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+    required:
+      - id
+      - profile_id
+      - title
+      - goal
+      - is_active
+      - created_at
+      - updated_at
+
+  WorkoutItemDTO:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      kind:
+        type: string
+        enum: [run, walk, strength, morning, core, other]
+        example: "run"
+      time_minutes:
+        type: integer
+        minimum: 0
+        maximum: 1439
+        description: Время суток в минутах (0-1439)
+        example: 420
+      days_mask:
+        type: integer
+        minimum: 0
+        maximum: 127
+        description: Битовая маска дней (пн=1, вт=2, ср=4, чт=8, пт=16, сб=32, вс=64)
+        example: 127
+      duration_min:
+        type: integer
+        minimum: 1
+        maximum: 300
+        description: Длительность в минутах
+        example: 30
+      intensity:
+        type: string
+        enum: [low, medium, high]
+        example: "medium"
+      note:
+        type: string
+        example: "Легкая пробежка в парке"
+      details:
+        type: object
+        additionalProperties: true
+        description: Дополнительные детали (exercises, intervals, etc)
+        nullable: true
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+    required:
+      - id
+      - kind
+      - time_minutes
+      - days_mask
+      - duration_min
+      - intensity
+      - note
+      - created_at
+      - updated_at
+
+  WorkoutCompletionDTO:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      date:
+        type: string
+        format: date
+        example: "2024-01-15"
+      plan_item_id:
+        type: string
+        format: uuid
+      status:
+        type: string
+        enum: [done, skipped]
+        example: "done"
+      note:
+        type: string
+        example: "Пробежал 5км"
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+    required:
+      - id
+      - date
+      - plan_item_id
+      - status
+      - note
+      - created_at
+      - updated_at
+
+  WorkoutSessionDTO:
+    type: object
+    description: Фактическая тренировка из HealthKit
+    properties:
+      start:
+        type: string
+        format: date-time
+      end:
+        type: string
+        format: date-time
+      label:
+        type: string
+        example: "Running"
+      calories_kcal:
+        type: integer
+        nullable: true
+        example: 250
+    required:
+      - start
+      - end
+      - label
+
+  GetWorkoutPlanResponse:
+    type: object
+    properties:
+      plan:
+        $ref: "#/components/schemas/WorkoutPlanDTO"
+        nullable: true
+        description: Активный план (null если нет)
+      items:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutItemDTO"
+        description: Элементы плана (пустой массив если нет плана)
+    required:
+      - items
+
+  ReplaceWorkoutPlanRequest:
+    type: object
+    properties:
+      profile_id:
+        type: string
+        format: uuid
+      title:
+        type: string
+        minLength: 1
+        maxLength: 200
+        example: "План на неделю"
+      goal:
+        type: string
+        enum: [cardio, strength, flexibility, general]
+        example: "cardio"
+      replace:
+        type: boolean
+        enum: [true]
+        description: Всегда должно быть true для replace операции
+      items:
+        type: array
+        minItems: 1
+        maxItems: 30
+        items:
+          $ref: "#/components/schemas/WorkoutItemUpsert"
+    required:
+      - profile_id
+      - title
+      - goal
+      - replace
+      - items
+
+  WorkoutItemUpsert:
+    type: object
+    properties:
+      kind:
+        type: string
+        enum: [run, walk, strength, morning, core, other]
+        example: "run"
+      time_minutes:
+        type: integer
+        minimum: 0
+        maximum: 1439
+        example: 420
+      days_mask:
+        type: integer
+        minimum: 0
+        maximum: 127
+        example: 127
+      duration_min:
+        type: integer
+        minimum: 1
+        maximum: 300
+        example: 30
+      intensity:
+        type: string
+        enum: [low, medium, high]
+        example: "medium"
+      note:
+        type: string
+        maxLength: 500
+        example: "Легкая пробежка"
+      details:
+        type: object
+        additionalProperties: true
+        nullable: true
+        description: JSON объект, максимум 16KB
+    required:
+      - kind
+      - time_minutes
+      - days_mask
+      - duration_min
+      - intensity
+      - note
+
+  ReplaceWorkoutPlanResponse:
+    type: object
+    properties:
+      plan:
+        $ref: "#/components/schemas/WorkoutPlanDTO"
+      items:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutItemDTO"
+    required:
+      - plan
+      - items
+
+  UpsertWorkoutCompletionRequest:
+    type: object
+    properties:
+      profile_id:
+        type: string
+        format: uuid
+      date:
+        type: string
+        format: date
+        example: "2024-01-15"
+      plan_item_id:
+        type: string
+        format: uuid
+      status:
+        type: string
+        enum: [done, skipped]
+        example: "done"
+      note:
+        type: string
+        maxLength: 500
+        example: "Отличная пробежка"
+    required:
+      - profile_id
+      - date
+      - plan_item_id
+      - status
+      - note
+
+  ListWorkoutCompletionsResponse:
+    type: object
+    properties:
+      completions:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutCompletionDTO"
+    required:
+      - completions
+
+  WorkoutTodayResponse:
+    type: object
+    properties:
+      date:
+        type: string
+        format: date
+        example: "2024-01-15"
+      profile_id:
+        type: string
+        format: uuid
+      planned:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutItemDTO"
+        description: Запланированные тренировки на этот день
+      completions:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutCompletionDTO"
+        description: Отметки о выполнении
+      actual_workouts:
+        type: array
+        items:
+          $ref: "#/components/schemas/WorkoutSessionDTO"
+        description: Фактические тренировки из HealthKit (опционально)
+      is_done:
+        type: boolean
+        description: Все ли запланированные тренировки выполнены
+        example: false
+    required:
+      - date
+      - profile_id
+      - planned
+      - completions
+      - actual_workouts
+      - is_done

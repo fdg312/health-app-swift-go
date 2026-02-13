@@ -1,4 +1,11 @@
-# Go
+# ===== Secrets & env files =====
+.env
+*.env
+*.env.local
+**/*.env
+**/*.env.local
+
+# ===== Go =====
 *.exe
 *.exe~
 *.dll
@@ -7,19 +14,28 @@
 *.test
 *.out
 go.work
+go.work.sum
 /vendor/
 /tmp/
-.env
-.DS_Store
 
-# iOS/Xcode
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-*.xcworkspace/*
-!*.xcworkspace/contents.xcworkspacedata
-!*.xcworkspace/xcshareddata/
-*.xcuserstate
+# Server build artifacts
+server/bin/
+server/tmp/
+server/*.out
+server/.gocache/
+server/.gotmp/
+coverage.out
+coverage.html
+*.cover
+*.prof
+
+# ===== iOS / Xcode =====
+ios/**/DerivedData/
+ios/.DerivedData/
+ios/**/build/
+ios/**/.swiftpm/
+ios/**/xcuserdata/
+**/*.xcuserstate
 *.xcuserdatad
 xcuserdata/
 DerivedData/
@@ -33,10 +49,30 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
 fastlane/test_output
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
 
-# IDEs
+# ===== OS =====
+.DS_Store
+**/.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# ===== IDEs =====
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.iml
+
+# ===== DO NOT IGNORE (overrides) =====
+# Contracts and migrations must always be tracked
+!contracts/openapi.yaml
+!contracts/openapi-feed-checkins.yaml
+!server/migrations/*.sql
+/server/api
