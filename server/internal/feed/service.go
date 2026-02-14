@@ -19,7 +19,7 @@ var (
 
 // MetricsStorage defines the interface for metrics operations
 type MetricsStorage interface {
-	GetDailyMetrics(profileID uuid.UUID, from, to string) ([]DailyMetricRow, error)
+	GetDailyMetrics(ctx context.Context, profileID uuid.UUID, from, to string) ([]DailyMetricRow, error)
 }
 
 // DailyMetricRow represents a daily metric row
@@ -31,7 +31,7 @@ type DailyMetricRow struct {
 
 // CheckinsStorage defines the interface for checkins operations
 type CheckinsStorage interface {
-	ListCheckins(profileID uuid.UUID, from, to string) ([]Checkin, error)
+	ListCheckins(ctx context.Context, profileID uuid.UUID, from, to string) ([]Checkin, error)
 }
 
 // Checkin represents a checkin
@@ -54,9 +54,9 @@ type ProfileStorage interface {
 
 // IntakesStorage defines the interface for intakes operations
 type IntakesStorage interface {
-	GetWaterDaily(profileID uuid.UUID, date string) (int, error)
-	GetSupplementDaily(profileID uuid.UUID, date string) (map[uuid.UUID]string, error)
-	ListSupplements(profileID uuid.UUID) ([]Supplement, error)
+	GetWaterDaily(ctx context.Context, profileID uuid.UUID, date string) (int, error)
+	GetSupplementDaily(ctx context.Context, profileID uuid.UUID, date string) (map[uuid.UUID]string, error)
+	ListSupplements(ctx context.Context, profileID uuid.UUID) ([]Supplement, error)
 }
 
 // Supplement represents a supplement for counting
@@ -170,7 +170,7 @@ func (s *Service) GetDaySummary(ctx context.Context, profileID uuid.UUID, date s
 	missingFields := []string{}
 
 	// Fetch daily metrics
-	metricsRows, err := s.metricsStorage.GetDailyMetrics(profileID, date, date)
+	metricsRows, err := s.metricsStorage.GetDailyMetrics(ctx, profileID, date, date)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *Service) GetDaySummary(ctx context.Context, profileID uuid.UUID, date s
 	}
 
 	// Fetch checkins
-	checkinsRows, err := s.checkinsStorage.ListCheckins(profileID, date, date)
+	checkinsRows, err := s.checkinsStorage.ListCheckins(ctx, profileID, date, date)
 	if err != nil {
 		return nil, err
 	}
@@ -247,12 +247,12 @@ func (s *Service) GetDaySummary(ctx context.Context, profileID uuid.UUID, date s
 	// Fetch intakes data (optional, no error if not available)
 	var intakesSummary *IntakesSummary
 	if s.intakesStorage != nil {
-		waterTotal, err := s.intakesStorage.GetWaterDaily(profileID, date)
+		waterTotal, err := s.intakesStorage.GetWaterDaily(ctx, profileID, date)
 		if err == nil {
 			// Get supplements count
-			supplements, err := s.intakesStorage.ListSupplements(profileID)
+			supplements, err := s.intakesStorage.ListSupplements(ctx, profileID)
 			if err == nil {
-				supplementStatuses, err := s.intakesStorage.GetSupplementDaily(profileID, date)
+				supplementStatuses, err := s.intakesStorage.GetSupplementDaily(ctx, profileID, date)
 				if err == nil {
 					supplementsTaken := 0
 					for _, status := range supplementStatuses {

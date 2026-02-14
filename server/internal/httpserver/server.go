@@ -710,8 +710,8 @@ type metricsStorageAdapter struct {
 	storage storage.MetricsStorage
 }
 
-func (m *metricsStorageAdapter) GetDailyMetrics(profileID uuid.UUID, from, to string) ([]feed.DailyMetricRow, error) {
-	rows, err := m.storage.GetDailyMetrics(nil, profileID, from, to)
+func (m *metricsStorageAdapter) GetDailyMetrics(ctx context.Context, profileID uuid.UUID, from, to string) ([]feed.DailyMetricRow, error) {
+	rows, err := m.storage.GetDailyMetrics(ctx, profileID, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -732,7 +732,7 @@ type checkinsStorageAdapter struct {
 	storage checkins.Storage
 }
 
-func (c *checkinsStorageAdapter) ListCheckins(profileID uuid.UUID, from, to string) ([]feed.Checkin, error) {
+func (c *checkinsStorageAdapter) ListCheckins(ctx context.Context, profileID uuid.UUID, from, to string) ([]feed.Checkin, error) {
 	checkinsRows, err := c.storage.ListCheckins(profileID, from, to)
 	if err != nil {
 		return nil, err
@@ -807,18 +807,15 @@ type intakesStorageAdapter struct {
 	intakesStorage     storage.IntakesStorage
 }
 
-func (i *intakesStorageAdapter) GetWaterDaily(profileID uuid.UUID, date string) (int, error) {
-	ctx := context.Background()
+func (i *intakesStorageAdapter) GetWaterDaily(ctx context.Context, profileID uuid.UUID, date string) (int, error) {
 	return i.intakesStorage.GetWaterDaily(ctx, profileID, date)
 }
 
-func (i *intakesStorageAdapter) GetSupplementDaily(profileID uuid.UUID, date string) (map[uuid.UUID]string, error) {
-	ctx := context.Background()
+func (i *intakesStorageAdapter) GetSupplementDaily(ctx context.Context, profileID uuid.UUID, date string) (map[uuid.UUID]string, error) {
 	return i.intakesStorage.GetSupplementDaily(ctx, profileID, date)
 }
 
-func (i *intakesStorageAdapter) ListSupplements(profileID uuid.UUID) ([]feed.Supplement, error) {
-	ctx := context.Background()
+func (i *intakesStorageAdapter) ListSupplements(ctx context.Context, profileID uuid.UUID) ([]feed.Supplement, error) {
 	supplements, err := i.supplementsStorage.ListSupplements(ctx, profileID)
 	if err != nil {
 		return nil, err

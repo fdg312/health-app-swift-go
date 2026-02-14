@@ -23,7 +23,7 @@ func newMockMetricsStorage() *mockMetricsStorage {
 	}
 }
 
-func (m *mockMetricsStorage) GetDailyMetrics(profileID uuid.UUID, from, to string) ([]DailyMetricRow, error) {
+func (m *mockMetricsStorage) GetDailyMetrics(ctx context.Context, profileID uuid.UUID, from, to string) ([]DailyMetricRow, error) {
 	key := profileID.String() + ":" + from
 	if payload, exists := m.metrics[key]; exists {
 		return []DailyMetricRow{
@@ -53,7 +53,7 @@ func newMockCheckinsStorage() *mockCheckinsStorage {
 	}
 }
 
-func (m *mockCheckinsStorage) ListCheckins(profileID uuid.UUID, from, to string) ([]Checkin, error) {
+func (m *mockCheckinsStorage) ListCheckins(ctx context.Context, profileID uuid.UUID, from, to string) ([]Checkin, error) {
 	var result []Checkin
 	for _, c := range m.checkins {
 		if c.ProfileID == profileID && c.Date >= from && c.Date <= to {
