@@ -7,7 +7,10 @@ import (
 	"net/mail"
 	"net/smtp"
 	"strings"
+	"time"
 )
+
+const smtpDialTimeout = 10 * time.Second
 
 type SMTPConfig struct {
 	Host     string
@@ -29,13 +32,17 @@ func NewSMTPSender(cfg SMTPConfig) *SMTPSender {
 func (s *SMTPSender) Send(to, subject, textBody string) error {
 	addr := net.JoinHostPort(s.cfg.Host, fmt.Sprintf("%d", s.cfg.Port))
 
-	client, err := smtp.Dial(addr)
+	conn, err := net.DialTimeout("tcp", addr, smtpDialTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to connect to SMTP server %s: %w", addr, err)
+		return fmt.Errorf("failed to connect to SMTP server %s (timeout %s): %w", addr, smtpDialTimeout, err)
 	}
-	if client != nil {
-		defer client.Close()
+
+	client, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to create SMTP client for %s: %w", addr, err)
 	}
+	defer client.Close()
 
 	if s.cfg.UseTLS {
 		ok, _ := client.Extension("STARTTLS")

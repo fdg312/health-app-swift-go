@@ -185,13 +185,15 @@ type Config struct {
 	AppleIssuer         string
 	AppleJWKSURL        string
 	AppleSubPrefix      string
-	EmailSenderMode     string // local | smtp
+	EmailSenderMode     string // local | smtp | resend
 	SMTPHost            string
 	SMTPPort            int
 	SMTPUsername        string
 	SMTPPassword        string
 	SMTPFrom            string
 	SMTPUseTLS          bool
+	ResendAPIKey        string
+	ResendFrom          string
 	OTPDebugReturnCode  bool
 
 	// AI
@@ -406,9 +408,17 @@ func Load() *Config {
 	if emailSenderMode == "" {
 		emailSenderMode = "local"
 	}
-	if emailSenderMode != "local" && emailSenderMode != "smtp" {
+	if emailSenderMode != "local" && emailSenderMode != "smtp" && emailSenderMode != "resend" {
 		log.Printf("WARNING: unknown EMAIL_SENDER_MODE=%q, fallback to local", emailSenderMode)
 		emailSenderMode = "local"
+	}
+	resendAPIKey := strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+	resendFrom := strings.TrimSpace(os.Getenv("RESEND_FROM"))
+	if resendFrom == "" {
+		resendFrom = "HealthHub <onboarding@resend.dev>"
+	}
+	if emailSenderMode == "resend" && resendAPIKey == "" {
+		log.Fatal("RESEND_API_KEY is required when EMAIL_SENDER_MODE=resend")
 	}
 	smtpHost := strings.TrimSpace(os.Getenv("SMTP_HOST"))
 	smtpPort := envInt("SMTP_PORT", 587)
@@ -551,6 +561,8 @@ func Load() *Config {
 		SMTPPassword:        smtpPassword,
 		SMTPFrom:            smtpFrom,
 		SMTPUseTLS:          smtpUseTLS,
+		ResendAPIKey:        resendAPIKey,
+		ResendFrom:          resendFrom,
 		OTPDebugReturnCode:  otpDebugReturnCode,
 		AIMode:              aiMode,
 		AIMaxOutputTokens:   aiMaxOutputTokens,

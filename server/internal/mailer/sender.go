@@ -50,6 +50,14 @@ func NewSenderFromConfig(cfg *config.Config, logger *log.Logger) (Sender, error)
 			From:     cfg.SMTPFrom,
 			UseTLS:   cfg.SMTPUseTLS,
 		}), nil
+	case "resend":
+		if strings.TrimSpace(cfg.ResendAPIKey) == "" {
+			return nil, errors.New("RESEND_API_KEY is required for EMAIL_SENDER_MODE=resend")
+		}
+		return NewResendSender(ResendConfig{
+			APIKey: cfg.ResendAPIKey,
+			From:   cfg.ResendFrom,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported EMAIL_SENDER_MODE=%q", mode)
 	}

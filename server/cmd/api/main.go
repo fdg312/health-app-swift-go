@@ -80,14 +80,18 @@ func printStartupBanner(cfg *config.Config) {
 	// ---- Mailer ----
 	log.Println("---- mailer ----")
 	log.Printf("  email_sender     = %s", cfg.EmailSenderMode)
-	if cfg.EmailSenderMode == "smtp" {
+	switch cfg.EmailSenderMode {
+	case "smtp":
 		log.Printf("  smtp_host        = %s", nonEmptyOrDash(cfg.SMTPHost))
 		log.Printf("  smtp_port        = %d", cfg.SMTPPort)
 		log.Printf("  smtp_from        = %s", nonEmptyOrDash(cfg.SMTPFrom))
 		log.Printf("  smtp_username    = %s", setOrNot(cfg.SMTPUsername))
 		log.Printf("  smtp_password    = %s", setOrNot(cfg.SMTPPassword))
 		log.Printf("  smtp_use_tls     = %t", cfg.SMTPUseTLS)
-	} else {
+	case "resend":
+		log.Printf("  resend_api_key   = %s", setOrNot(cfg.ResendAPIKey))
+		log.Printf("  resend_from      = %s", nonEmptyOrDash(cfg.ResendFrom))
+	default:
 		log.Printf("  (OTP codes will be printed to the server console)")
 	}
 
@@ -128,6 +132,13 @@ func validateProductionConfig(cfg *config.Config) {
 		}
 		if len(missing) > 0 {
 			log.Fatalf("FATAL mailer: EMAIL_SENDER_MODE=smtp but config is incomplete — missing: %s", strings.Join(missing, ", "))
+		}
+	}
+
+	// Resend validation when enabled
+	if cfg.EmailSenderMode == "resend" {
+		if strings.TrimSpace(cfg.ResendAPIKey) == "" {
+			log.Fatal("FATAL mailer: EMAIL_SENDER_MODE=resend but RESEND_API_KEY is not set")
 		}
 	}
 
