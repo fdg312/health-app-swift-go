@@ -3,7 +3,10 @@ package mealplans
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/fdg312/health-hub/internal/userctx"
 )
 
 // Handler handles HTTP requests for meal plans.
@@ -19,7 +22,11 @@ func NewHandler(service *Service) *Handler {
 // HandleGet handles GET /v1/meal/plan?profile_id=
 func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	profileID := r.URL.Query().Get("profile_id")
 	if profileID == "" {
@@ -58,7 +65,11 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 // HandleReplace handles PUT /v1/meal/plan/replace
 func (h *Handler) HandleReplace(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	var req ReplaceMealPlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -90,7 +101,11 @@ func (h *Handler) HandleReplace(w http.ResponseWriter, r *http.Request) {
 // HandleGetToday handles GET /v1/meal/today?profile_id=&date=YYYY-MM-DD
 func (h *Handler) HandleGetToday(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	profileID := r.URL.Query().Get("profile_id")
 	if profileID == "" {
@@ -130,7 +145,11 @@ func (h *Handler) HandleGetToday(w http.ResponseWriter, r *http.Request) {
 // HandleDelete handles DELETE /v1/meal/plan?profile_id=
 func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	profileID := r.URL.Query().Get("profile_id")
 	if profileID == "" {

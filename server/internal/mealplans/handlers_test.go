@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/fdg312/health-hub/internal/userctx"
 	"time"
 
 	"github.com/fdg312/health-hub/internal/storage"
@@ -168,7 +170,7 @@ func TestHandleReplace_Success(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPut, "/v1/meal/plan/replace", bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -222,7 +224,7 @@ func TestHandleReplace_DuplicateDaySlot(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPut, "/v1/meal/plan/replace", bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -267,7 +269,7 @@ func TestHandleReplace_MaxItems(t *testing.T) {
 
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPut, "/v1/meal/plan/replace", bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -316,7 +318,7 @@ func TestHandleGetToday_CorrectDayIndex(t *testing.T) {
 
 	// Query for a specific Sunday date (2024-01-07 is a Sunday)
 	req := httptest.NewRequest(http.MethodGet, "/v1/meal/today?profile_id=profile1&date=2024-01-07", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -358,7 +360,7 @@ func TestHandleDelete_Ownership(t *testing.T) {
 
 	// Try to delete as user2 (different owner)
 	req := httptest.NewRequest(http.MethodDelete, "/v1/meal/plan?profile_id=profile1", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user2")
+	ctx := userctx.WithUserID(req.Context(), "user2")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -383,7 +385,7 @@ func TestHandleGet_ReturnsEmptyWhenNoPlan(t *testing.T) {
 	// No plans in repo
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/meal/plan?profile_id=profile1", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()

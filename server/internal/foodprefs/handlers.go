@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fdg312/health-hub/internal/storage"
+	"github.com/fdg312/health-hub/internal/userctx"
 )
 
 // Handler handles HTTP requests for food preferences.
@@ -22,7 +23,11 @@ func NewHandler(service *Service) *Handler {
 // HandleList handles GET /v1/food/prefs?profile_id=&q=&limit=&offset=
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	// Parse query params
 	profileID := r.URL.Query().Get("profile_id")
@@ -63,7 +68,11 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 // HandleUpsert handles POST /v1/food/prefs
 func (h *Handler) HandleUpsert(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	// Parse request body
 	var req UpsertFoodPrefRequest
@@ -106,7 +115,11 @@ func (h *Handler) HandleUpsert(w http.ResponseWriter, r *http.Request) {
 // HandleDelete handles DELETE /v1/food/prefs/{id}
 func (h *Handler) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	// Get ID from URL path - extract from /v1/food/prefs/{id}
 	path := strings.TrimPrefix(r.URL.Path, "/v1/food/prefs/")

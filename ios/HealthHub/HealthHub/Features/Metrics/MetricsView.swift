@@ -17,14 +17,18 @@ struct MetricsView: View {
     @State private var exportPhase: String = ""
     @State private var exportError: String?
     @State private var showExportError = false
-    @State private var shareFileURL: URL?
-    @State private var showShareSheet = false
+    @State private var sharePayload: SharePayload?
 
     // Report history state
     @State private var reports: [ReportDTO] = []
     @State private var isLoadingReports = false
     @State private var reportToDelete: ReportDTO?
     @State private var showDeleteConfirm = false
+
+    private struct SharePayload: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
 
     enum DateRange: String, CaseIterable {
         case week = "7D"
@@ -110,10 +114,8 @@ struct MetricsView: View {
             .task {
                 await loadData()
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = shareFileURL {
-                    ShareSheet(activityItems: [url])
-                }
+            .sheet(item: $sharePayload) { payload in
+                ShareSheet(activityItems: [payload.url])
             }
             .alert("Ошибка", isPresented: $showExportError) {
                 Button("OK", role: .cancel) {}
@@ -406,8 +408,7 @@ struct MetricsView: View {
             let fileURL = try await APIClient.shared.downloadReport(report: report)
 
             isExporting = false
-            shareFileURL = fileURL
-            showShareSheet = true
+            sharePayload = SharePayload(url: fileURL)
 
             await loadReports()
         } catch let error as APIError {
@@ -437,8 +438,7 @@ struct MetricsView: View {
         do {
             let fileURL = try await APIClient.shared.downloadReport(report: report)
             isExporting = false
-            shareFileURL = fileURL
-            showShareSheet = true
+            sharePayload = SharePayload(url: fileURL)
         } catch {
             isExporting = false
             exportError = "Не удалось скачать отчёт: \(error.localizedDescription)"

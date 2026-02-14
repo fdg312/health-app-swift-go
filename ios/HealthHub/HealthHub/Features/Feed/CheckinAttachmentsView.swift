@@ -11,7 +11,6 @@ struct CheckinAttachmentsView: View {
     @State private var uploadError: String?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var previewSource: SourceDTO?
-    @State private var showPreview = false
     @State private var sourceToDelete: SourceDTO?
     @State private var showDeleteConfirm = false
     @State private var showCreateLink = false
@@ -129,13 +128,11 @@ struct CheckinAttachmentsView: View {
         .task(id: checkinId) {
             await loadAttachments()
         }
-        .sheet(isPresented: $showPreview) {
-            if let source = previewSource {
-                if source.kind == "image" {
-                    PhotoPreviewSheet(source: source)
-                } else {
-                    NotePreviewSheet(source: source)
-                }
+        .sheet(item: $previewSource) { source in
+            if source.kind == "image" {
+                PhotoPreviewSheet(source: source)
+            } else {
+                NotePreviewSheet(source: source)
             }
         }
         .sheet(isPresented: $showCreateLink) {
@@ -182,7 +179,6 @@ struct CheckinAttachmentsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .onTapGesture {
                             previewSource = source
-                            showPreview = true
                         }
                 case .failure:
                     Image(systemName: "photo")
@@ -251,7 +247,6 @@ struct CheckinAttachmentsView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             previewSource = source
-            showPreview = true
         }
     }
 
@@ -490,14 +485,18 @@ struct NotePreviewSheet: View {
                             .fontWeight(.bold)
                     }
 
-                    if source.kind == "link", let url = source.url {
-                        Link(destination: URL(string: url)!) {
+                    if source.kind == "link", let url = source.url, let parsedURL = URL(string: url) {
+                        Link(destination: parsedURL) {
                             HStack {
                                 Image(systemName: "link")
                                 Text(url)
                                     .foregroundStyle(.blue)
                             }
                         }
+                    } else if source.kind == "link", let url = source.url {
+                        Text(url)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
                     }
 
                     if let text = source.text, !text.isEmpty {

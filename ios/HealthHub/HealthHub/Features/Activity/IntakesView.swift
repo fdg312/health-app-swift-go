@@ -240,12 +240,18 @@ struct IntakesView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+
+        if !supplement.components.isEmpty {
+          Text(componentSummary(supplement.components))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
       }
 
       Spacer()
 
       Picker(
-        "",
+        "Статус",
         selection: Binding(
           get: { status },
           set: { newStatus in
@@ -255,12 +261,11 @@ struct IntakesView: View {
           }
         )
       ) {
-        Text("—").tag("none")
-        Text("✓").tag("taken")
-        Text("×").tag("skipped")
+        Text("Нет").tag("none")
+        Text("Принял").tag("taken")
+        Text("Пропустил").tag("skipped")
       }
-      .pickerStyle(.segmented)
-      .frame(width: 120)
+      .pickerStyle(.menu)
     }
     .padding(.vertical, 4)
   }
@@ -447,6 +452,12 @@ struct IntakesView: View {
     return selected.isEmpty ? "—" : selected.joined(separator: ", ")
   }
 
+  private func componentSummary(_ components: [SupplementComponentDTO]) -> String {
+    components
+      .map { "\($0.nutrientKey): \($0.amount.cleanString) \($0.unit)" }
+      .joined(separator: ", ")
+  }
+
   private func handleError(_ error: Error) -> Bool {
     if let apiError = error as? APIError, apiError == .unauthorized {
       auth.handleUnauthorized()
@@ -628,12 +639,58 @@ struct CreateSupplementSheet: View {
   @State private var name = ""
   @State private var notes = ""
   @State private var isSaving = false
+  @State private var components: [ComponentDraft] = []
+  @State private var errorText: String?
 
   var body: some View {
     NavigationStack {
       Form {
+        if let errorText {
+          Section {
+            Text(errorText)
+              .font(.caption)
+              .foregroundStyle(.red)
+          }
+        }
+
         Section("Название") {
-          TextField("Например: Витамин D3", text: $name)
+          TextField("Например: Витамин D3 или Омега-комплекс", text: $name)
+        }
+
+        Section("Компоненты (опционально)") {
+          if components.isEmpty {
+            Text("Можно оставить пустым или добавить витамины/минералы для синхронизации с HealthKit")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+
+          ForEach($components) { $component in
+            VStack(alignment: .leading, spacing: 8) {
+              Picker("Витамин/компонент", selection: $component.preset) {
+                ForEach(ComponentPreset.allCases) { preset in
+                  Text(preset.title).tag(preset)
+                }
+              }
+
+              HStack {
+                TextField("Количество", value: $component.amount, format: .number)
+                  .keyboardType(.decimalPad)
+
+                TextField("Ед.", text: $component.unit)
+                  .textInputAutocapitalization(.never)
+                  .frame(width: 70)
+              }
+            }
+          }
+          .onDelete { indexSet in
+            components.remove(atOffsets: indexSet)
+          }
+
+          Button {
+            components.append(ComponentDraft())
+          } label: {
+            Label("Добавить компонент", systemImage: "plus")
+          }
         }
 
         Section("Заметки (опционально)") {
@@ -663,24 +720,126 @@ struct CreateSupplementSheet: View {
   }
 
   private func save() async {
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedName.isEmpty else {
+      errorText = "Введите название"
+      return
+    }
+
+    let requestComponents = components.compactMap { $0.toRequest() }
+
     isSaving = true
+    errorText = nil
 
     do {
       _ = try await APIClient.shared.createSupplement(
         profileId: profileId,
-        name: name,
-        notes: notes.isEmpty ? nil : notes,
-        components: []
+        name: trimmedName,
+        notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notes,
+        components: requestComponents
       )
       onCreated()
       dismiss()
     } catch {
-      print("Error creating supplement: \(error)")
+      if let apiError = error as? APIError {
+        errorText = "Ошибка создания (\(apiError.uiCode))"
+      } else {
+        errorText = "Ошибка создания (bad_response)"
+      }
     }
 
     isSaving = false
   }
 }
+
+private struct ComponentDraft: Identifiable {
+  let id = UUID()
+  var preset: ComponentPreset = .vitaminD
+  var amount: Double = 1
+  var unit: String = "mg"
+
+  init() {
+    self.preset = .vitaminD
+    self.amount = 1
+    self.unit = ComponentPreset.vitaminD.defaultUnit
+  }
+
+  func toRequest() -> ComponentInput? {
+    let normalizedUnit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard amount > 0, !normalizedUnit.isEmpty else { return nil }
+    return ComponentInput(
+      nutrientKey: preset.nutrientKey,
+      hkIdentifier: preset.hkIdentifier,
+      amount: amount,
+      unit: normalizedUnit
+    )
+  }
+}
+
+private enum ComponentPreset: String, CaseIterable, Identifiable {
+  case vitaminD
+  case vitaminC
+  case vitaminB12
+  case magnesium
+  case omega3
+  case zinc
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .vitaminD: return "Витамин D"
+    case .vitaminC: return "Витамин C"
+    case .vitaminB12: return "Витамин B12"
+    case .magnesium: return "Магний"
+    case .omega3: return "Омега‑3"
+    case .zinc: return "Цинк"
+    }
+  }
+
+  var nutrientKey: String {
+    switch self {
+    case .vitaminD: return "vitamin_d"
+    case .vitaminC: return "vitamin_c"
+    case .vitaminB12: return "vitamin_b12"
+    case .magnesium: return "magnesium"
+    case .omega3: return "omega_3"
+    case .zinc: return "zinc"
+    }
+  }
+
+  var hkIdentifier: String? {
+    switch self {
+    case .vitaminD: return "HKQuantityTypeIdentifierDietaryVitaminD"
+    case .vitaminC: return "HKQuantityTypeIdentifierDietaryVitaminC"
+    case .vitaminB12: return "HKQuantityTypeIdentifierDietaryVitaminB12"
+    case .magnesium: return "HKQuantityTypeIdentifierDietaryMagnesium"
+    case .omega3: return nil
+    case .zinc: return "HKQuantityTypeIdentifierDietaryZinc"
+    }
+  }
+
+  var defaultUnit: String {
+    switch self {
+    case .vitaminD: return "mcg"
+    case .vitaminC: return "mg"
+    case .vitaminB12: return "mcg"
+    case .magnesium: return "mg"
+    case .omega3: return "mg"
+    case .zinc: return "mg"
+    }
+  }
+}
+
+private extension Double {
+  var cleanString: String {
+    if truncatingRemainder(dividingBy: 1) == 0 {
+      return String(Int(self))
+    }
+    return String(format: "%.2f", self)
+  }
+}
+
 
 // MARK: - Add Water Sheet
 
