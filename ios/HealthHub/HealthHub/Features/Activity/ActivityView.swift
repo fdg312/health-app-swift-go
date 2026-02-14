@@ -11,12 +11,9 @@ struct ActivityView: View {
   @State private var searchText = ""
   @State private var selectedTab: ActivityTab = .sources
   @State private var selectedFilter: SourceFilter = .all
-  @State private var showCreateSheet = false
   @State private var createType: CreateSourceType?
   @State private var previewSource: SourceDTO?
-  @State private var showPreview = false
-  @State private var safariURL: URL?
-  @State private var showSafari = false
+  @State private var safariDestination: SafariDestination?
   @State private var sourceToDelete: SourceDTO?
   @State private var showDeleteConfirm = false
   @State private var selectedNutritionTab: NutritionTab = .foodPrefs
@@ -44,8 +41,15 @@ struct ActivityView: View {
     }
   }
 
-  enum CreateSourceType {
+  enum CreateSourceType: String, Identifiable {
     case link, note
+
+    var id: String { rawValue }
+  }
+
+  private struct SafariDestination: Identifiable {
+    let id = UUID()
+    let url: URL
   }
 
   private var ownerProfile: ProfileDTO? {
@@ -188,14 +192,12 @@ struct ActivityView: View {
         Menu {
           Button {
             createType = .link
-            showCreateSheet = true
           } label: {
             Label("Ссылка", systemImage: "link")
           }
 
           Button {
             createType = .note
-            showCreateSheet = true
           } label: {
             Label("Заметка", systemImage: "note.text")
           }
@@ -210,28 +212,22 @@ struct ActivityView: View {
     .task {
       await loadData()
     }
-    .sheet(isPresented: $showCreateSheet) {
-      if let type = createType {
-        CreateSourceSheet(
-          type: type,
-          profileId: ownerProfile?.id,
-          onSave: { await loadSources(showLoader: false) }
-        )
+    .sheet(item: $createType) { type in
+      CreateSourceSheet(
+        type: type,
+        profileId: ownerProfile?.id,
+        onSave: { await loadSources(showLoader: false) }
+      )
+    }
+    .sheet(item: $previewSource) { source in
+      if source.kind == "note" {
+        NotePreviewSheet(source: source)
+      } else {
+        PhotoPreviewSheet(source: source)
       }
     }
-    .sheet(isPresented: $showPreview) {
-      if let source = previewSource {
-        if source.kind == "note" {
-          NotePreviewSheet(source: source)
-        } else {
-          PhotoPreviewSheet(source: source)
-        }
-      }
-    }
-    .sheet(isPresented: $showSafari) {
-      if let url = safariURL {
-        SafariView(url: url)
-      }
+    .sheet(item: $safariDestination) { destination in
+      SafariView(url: destination.url)
     }
     .alert("Удалить источник?", isPresented: $showDeleteConfirm) {
       Button("Удалить", role: .destructive) {
@@ -360,15 +356,12 @@ struct ActivityView: View {
     switch source.kind {
     case "image":
       previewSource = source
-      showPreview = true
     case "link":
       if let urlString = source.url, let url = URL(string: urlString) {
-        safariURL = url
-        showSafari = true
+        safariDestination = SafariDestination(url: url)
       }
     case "note":
       previewSource = source
-      showPreview = true
     default:
       break
     }

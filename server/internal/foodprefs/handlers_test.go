@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/fdg312/health-hub/internal/userctx"
+
 	"github.com/fdg312/health-hub/internal/storage"
 )
 
@@ -130,7 +132,7 @@ func TestHandleList_CreateAndList(t *testing.T) {
 
 	// List request
 	req := httptest.NewRequest(http.MethodGet, "/v1/food/prefs?profile_id=profile1&limit=50&offset=0", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -170,7 +172,7 @@ func TestHandleList_SearchQuery(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/food/prefs?profile_id=profile1&q=an&limit=50&offset=0", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -205,7 +207,7 @@ func TestHandleDelete_Success(t *testing.T) {
 	repo.prefs = []storage.FoodPref{pref}
 
 	req := httptest.NewRequest(http.MethodDelete, "/v1/food/prefs/fp1", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -236,7 +238,7 @@ func TestHandleDelete_Ownership(t *testing.T) {
 
 	// Try to delete with user2 (different owner)
 	req := httptest.NewRequest(http.MethodDelete, "/v1/food/prefs/fp1", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user2")
+	ctx := userctx.WithUserID(req.Context(), "user2")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()
@@ -265,7 +267,7 @@ func TestHandleList_OwnershipProtection(t *testing.T) {
 
 	// User1 tries to list - should only see their own
 	req := httptest.NewRequest(http.MethodGet, "/v1/food/prefs?profile_id=profile1&limit=50&offset=0", nil)
-	ctx := context.WithValue(req.Context(), "user_id", "user1")
+	ctx := userctx.WithUserID(req.Context(), "user1")
 	req = req.WithContext(ctx)
 
 	w := httptest.NewRecorder()

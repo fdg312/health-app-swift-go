@@ -3,7 +3,9 @@ package nutrition
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
+	"github.com/fdg312/health-hub/internal/userctx"
 	"github.com/google/uuid"
 )
 
@@ -20,7 +22,11 @@ func NewHandler(service *Service) *Handler {
 // HandleGetTargets handles GET /v1/nutrition/targets?profile_id=
 func (h *Handler) HandleGetTargets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	// Parse profile_id query param
 	profileIDStr := r.URL.Query().Get("profile_id")
@@ -59,7 +65,11 @@ func (h *Handler) HandleGetTargets(w http.ResponseWriter, r *http.Request) {
 // HandleUpsertTargets handles PUT /v1/nutrition/targets
 func (h *Handler) HandleUpsertTargets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	ownerUserID := r.Context().Value("user_id").(string)
+	ownerUserID, ok := userctx.GetUserID(ctx)
+	if !ok || strings.TrimSpace(ownerUserID) == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "Unauthorized")
+		return
+	}
 
 	// Parse request body
 	var req UpsertTargetsRequest
