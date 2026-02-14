@@ -151,6 +151,7 @@ struct ActivityView: View {
                 title: "Нет источников",
                 description: "Добавьте ссылки, заметки или фотографии"
               )
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
               .listRowBackground(Color.clear)
               .listRowInsets(EdgeInsets())
             }

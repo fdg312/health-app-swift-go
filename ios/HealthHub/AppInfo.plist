@@ -60,5 +60,7 @@
 	<string>Приложение использует данные здоровья для синхронизации метрик и напоминаний.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Приложение может записывать данные приёма воды и добавок в Apple Health.</string>
+	<key>API_BASE_URL</key>
+	<string>https://health-app-swift-go.onrender.com</string>
 </dict>
 </plist>

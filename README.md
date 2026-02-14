@@ -58,6 +58,8 @@ health-hub/
 | [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) | **🚀 Быстрый старт за 5 минут** — минимальная конфигурация |
 | [docs/ENV_TROUBLESHOOTING.md](docs/ENV_TROUBLESHOOTING.md) | **🔧 Решение проблем** с переменными окружения |
 | [server/.env.example](server/.env.example) | Полный шаблон конфигурации со всеми переменными |
+| [ios/PRODUCTION_SETUP.md](ios/PRODUCTION_SETUP.md) | **📱 Настройка iOS** на production сервер |
+| [docs/iOS_PRODUCTION_TESTING.md](docs/iOS_PRODUCTION_TESTING.md) | **🧪 Тестирование iOS** с production сервером |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Пошаговый деплой на Render + Neon + Yandex S3 |
 | [docs/architecture.md](docs/architecture.md) | Архитектура проекта |
 | [docs/reports/](docs/reports/) | Implementation reports по каждой фиче |

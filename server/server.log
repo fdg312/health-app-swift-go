@@ -1,0 +1,44 @@
+2026/02/14 03:26:30 WARNING: unknown REPORTS_MODE="# local | s3 | auto (optional override)", fallback to local
+2026/02/14 03:26:30 ========== Health Hub API ==========
+2026/02/14 03:26:30   env              = local
+2026/02/14 03:26:30   port             = 8080
+2026/02/14 03:26:30 ---- database ----
+2026/02/14 03:26:30   runtime_url      = set (via DATABASE_URL_POOLED)
+2026/02/14 03:26:30   pooled           = set
+2026/02/14 03:26:30   direct           = set
+2026/02/14 03:26:30   migrations_on_startup = false
+2026/02/14 03:26:30 ---- auth ----
+2026/02/14 03:26:30   auth_mode        = dev
+2026/02/14 03:26:30   auth_required    = true
+2026/02/14 03:26:30   email_auth       = true
+2026/02/14 03:26:30   jwt_secret       = set (custom)
+2026/02/14 03:26:30   otp_secret       = set
+2026/02/14 03:26:30 ---- blob ----
+2026/02/14 03:26:30   blob_mode        = s3
+2026/02/14 03:26:30   reports_mode     = local (effective=local)
+2026/02/14 03:26:30   s3: endpoint=https://storage.yandexcloud.net region=ru-central1 bucket=health-app-swift-go-dev public_base_url=https://storage.yandexcloud.net/health-app-swift-go-dev presign_ttl=900s prefer_public_url=false access_key_id=set secret_access_key=set
+2026/02/14 03:26:30 ---- mailer ----
+2026/02/14 03:26:30   email_sender     = smtp
+2026/02/14 03:26:30   smtp_host        = smtp.yandex.ru
+2026/02/14 03:26:30   smtp_port        = 587
+2026/02/14 03:26:30   smtp_from        = HealthHub <fdg312kuznetsov@yandex.ru>
+2026/02/14 03:26:30   smtp_username    = set
+2026/02/14 03:26:30   smtp_password    = set
+2026/02/14 03:26:30   smtp_use_tls     = true
+2026/02/14 03:26:30 ---- ai ----
+2026/02/14 03:26:30   ai_mode          = openai
+2026/02/14 03:26:30   openai_model     = gpt-4.1-mini
+2026/02/14 03:26:30   openai_api_key   = set
+2026/02/14 03:26:30 ====================================
+2026/02/14 03:26:30 Подключение к PostgreSQL...
+2026/02/14 03:26:31 PostgreSQL подключен успешно
+2026/02/14 03:26:31 INFO blob: initializing sources store (BLOB_MODE=s3)
+2026/02/14 03:26:31 INFO blob.s3: code=s3_ready endpoint=https://storage.yandexcloud.net region=ru-central1 bucket=health-app-swift-go-dev public_base_url=https://storage.yandexcloud.net/health-app-swift-go-dev presign_ttl=900s prefer_public_url=false access_key_id=set secret_access_key=set
+2026/02/14 03:26:31 INFO blob: mode=s3 (forced)
+2026/02/14 03:26:31 INFO blob: sources blob mode: s3
+2026/02/14 03:26:31 INFO blob: initializing reports store (REPORTS_MODE=local, override from BLOB_MODE=s3)
+2026/02/14 03:26:31 INFO blob: mode=local (forced)
+2026/02/14 03:26:31 INFO blob: reports blob mode: local (separate store)
+2026/02/14 03:26:31 Сервер запущен на http://localhost:8080
+2026/02/14 03:26:31 Health check: http://localhost:8080/healthz
+2026/02/14 03:26:31 Profiles API: http://localhost:8080/v1/profiles

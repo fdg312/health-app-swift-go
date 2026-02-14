@@ -31,9 +31,11 @@ func (s *SMTPSender) Send(to, subject, textBody string) error {
 
 	client, err := smtp.Dial(addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to connect to SMTP server %s: %w", addr, err)
 	}
-	defer client.Close()
+	if client != nil {
+		defer client.Close()
+	}
 
 	if s.cfg.UseTLS {
 		ok, _ := client.Extension("STARTTLS")
@@ -44,14 +46,14 @@ func (s *SMTPSender) Send(to, subject, textBody string) error {
 			ServerName: s.cfg.Host,
 			MinVersion: tls.VersionTLS12,
 		}); err != nil {
-			return err
+			return fmt.Errorf("failed to start TLS: %w", err)
 		}
 	}
 
 	if strings.TrimSpace(s.cfg.Username) != "" {
 		auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 		if err := client.Auth(auth); err != nil {
-			return err
+			return fmt.Errorf("smtp authentication failed: %w", err)
 		}
 	}
 
@@ -61,15 +63,15 @@ func (s *SMTPSender) Send(to, subject, textBody string) error {
 	}
 
 	if err := client.Mail(fromAddress); err != nil {
-		return err
+		return fmt.Errorf("smtp MAIL command failed: %w", err)
 	}
 	if err := client.Rcpt(to); err != nil {
-		return err
+		return fmt.Errorf("smtp RCPT command failed for %s: %w", to, err)
 	}
 
 	dataWriter, err := client.Data()
 	if err != nil {
-		return err
+		return fmt.Errorf("smtp DATA command failed: %w", err)
 	}
 
 	message := buildMessage(s.cfg.From, to, subject, textBody)
